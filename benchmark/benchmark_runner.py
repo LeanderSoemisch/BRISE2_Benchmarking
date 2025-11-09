@@ -563,7 +563,7 @@ class BRISEBenchmarkRunner:
         }
         # test case with 2 float parameters
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_0.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_0.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_2float_model_skeleton))
@@ -571,7 +571,7 @@ class BRISEBenchmarkRunner:
 
         # test case with float nom parameters
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_4.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_4.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_float_nom_model_skeleton))
@@ -579,7 +579,7 @@ class BRISEBenchmarkRunner:
 
         # test case with float nom parameters and random DCH
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_9.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_9.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_float_nom_model_skeleton))
@@ -587,16 +587,127 @@ class BRISEBenchmarkRunner:
 
         # test case with all parameter types and random DCH
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_2.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_2.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         self.execute_experiment(experiment_description, number_of_repetitions=1)
 
         # test case with all parameter types
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_2_wo_dch.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_2_wo_dch.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
+        self.execute_experiment(experiment_description, number_of_repetitions=1)
+
+        return self.counter
+
+    @_benchmarkable
+    def benchmark_energy(self):
+        """
+        Benchmark scenario using the EnergyExperiment configuration.
+        This provides a more realistic benchmark with actual energy consumption optimization.
+        """
+        self._experiment_timeout = 10 * 60  # 10 minutes timeout for energy experiments
+
+        # Time-based stop condition (2 minutes runtime)
+        time_based_sc_skeleton = {
+            "StopCondition": {
+                "Instance": {
+                    "TimeBasedSC": {
+                        "Parameters": {
+                            "MaxRunTime": 20,
+                            "TimeUnit": "minutes"
+                        },
+                        "Type": "time_based",
+                        "Name": "t"
+                    }
+                },
+                "StopConditionTriggerLogic": {
+                    "Expression": "t",
+                    "InspectionParameters": {
+                        "RepetitionPeriod": 1,
+                        "TimeUnit": "seconds"
+                    }
+                }
+            }
+        }
+
+        # Model configuration for energy optimization
+        model_skeleton = {
+            "ConfigurationSelection": {
+                "SamplingStrategy": {
+                    "Sobol": {
+                        "Seed": 1,
+                        "Type": "sobol"
+                    }
+                },
+                "Predictor": {
+                    "WindowSize": 1.0,
+                    "Model": {
+                        "Surrogate": {
+                            "ConfigurationTransformers": {
+                                "NominalTransformer": {
+                                    "SklearnBinaryTransformer": {
+                                        "Type": "sklearn_binary_transformer",
+                                        "Class": "sklearn.OrdinalEncoder"
+                                    }
+                                }
+                            },
+                            "Instance": {
+                                "GaussianProcessRegressor": {
+                                    "MultiObjective": "True",
+                                    "Parameters": {
+                                        "n_restarts_optimizer": 4
+                                    },
+                                    "Type": "sklearn_model_wrapper",
+                                    "Class": "sklearn.gaussian_process.GaussianProcessRegressor"
+                                }
+                            }
+                        },
+                        "Optimizer": {
+                            "ConfigurationTransformers": {
+                                "NominalTransformer": {
+                                    "SklearnBinaryTransformer": {
+                                        "Type": "sklearn_binary_transformer",
+                                        "Class": "sklearn.OrdinalEncoder"
+                                    }
+                                }
+                            },
+                            "Instance": {
+                                "MOEA": {
+                                    "Generations": 10,
+                                    "PopulationSize": 100,
+                                    "Algorithms": {
+                                        "GACO": {}
+                                    },
+                                    "Type": "moea"
+                                }
+                            }
+                        },
+                        "Validator": {
+                            "ExternalValidator": {
+                                "MockValidator": {
+                                    "Type": "mock_validator"
+                                }
+                            }
+                        },
+                        "CandidateSelector": {
+                            "BestMultiPointProposal": {
+                                "NumberOfPoints": 1,
+                                "Type": "best_multi_point"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        # Load and run Energy Experiment with GPR-Sobol configuration
+        self._base_experiment_description, self._base_search_space = \
+            load_experiment_setup("./Resources/EnergyExperiment/EnergyExperiment.json")
+        experiment_description = self.base_experiment_description
+        experiment_description.update(deepcopy(time_based_sc_skeleton))
+        experiment_description.update(deepcopy(model_skeleton))
         self.execute_experiment(experiment_description, number_of_repetitions=1)
 
         return self.counter

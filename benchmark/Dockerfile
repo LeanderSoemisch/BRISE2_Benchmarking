@@ -22,7 +22,7 @@ RUN usermod -aG sudo benchmark_user
 
 # Copying information for specific benchmarks, for example
 
-#COPY ./worker/scenarios/energy_consumption/search_space_96/*.csv /home/benchmark_user/scenarios/energy_consumption/search_space_96/
+COPY ./worker/scenarios/energy_consumption/search_space_96/*.csv /home/benchmark_user/scenarios/energy_consumption/search_space_96/
 #RUN rm /home/benchmark_user/scenarios/energy_consumption/search_space_96/*avg.csv
 
 # -     add your information here   -
@@ -33,4 +33,4 @@ RUN chown --recursive benchmark_user:benchmark_user .
 USER benchmark_user
 
 RUN echo "conda activate brise-260" >> ~/.bashrc
-CMD conda run -n brise-260 python3 ./entrypoint.py $MODE
+CMD conda run -n brise-260 python3 ./orchestrate_benchmark.py $MODE

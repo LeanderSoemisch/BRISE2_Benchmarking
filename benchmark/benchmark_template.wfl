@@ -1,0 +1,60 @@
+abstract Axis {
+  Label -> string
+  Scale -> string
+}
+
+abstract ObjectiveAxis: Axis {
+  ObjectiveName -> string
+  Normalize -> boolean
+  Normalization -> string
+  Direction -> string
+}
+
+abstract MetricAxis: Axis {
+  MetricName -> string
+}
+
+Benchmark {
+  ResultsSource {
+    Folder -> string
+  }
+  Series {
+    LabelBy -> string
+  }
+  Plots {
+    ImprovementPlot {
+      X: Axis {
+        Label -> string
+        [Label = "iteration"]
+        Scale -> string
+        [Scale = "linear"]
+      }
+      Y: ObjectiveAxis {
+        ObjectiveName -> string
+        Normalize -> boolean
+        Normalization -> string
+        Direction -> string
+        Label -> string
+        [Label = "Normalised objective"]
+        Scale -> string
+        [Scale = "linear"]
+      }
+    }
+    TimePlot ? {
+      X: Axis {
+        Label -> string
+        [Label = "iteration"]
+        Scale -> string
+        [Scale = "linear"]
+      }
+      Y: MetricAxis {
+        MetricName -> string
+        Label -> string
+        [Label = "Computation time (s)"]
+        Scale -> string // linear or log10
+        [Scale = "log10"]
+      }
+    }
+  }
+}
+

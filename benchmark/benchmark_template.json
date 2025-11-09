@@ -1,0 +1,27 @@
+{
+  "Benchmark": {
+    "ResultsSource": {
+      "Folder": "./results/serialized/"
+    },
+    "Series": {
+      "LabelBy": "experiment_name"
+    },
+    "Plots": {
+      "ImprovementPlot": {
+        "X": {"Label": "iteration", "Scale": "linear"},
+        "Y": {
+          "ObjectiveName": "Y1",
+          "Normalize": true,
+          "Normalization": "min_over_all_experiments",
+          "Direction": "minimize",
+          "Label": "Normalised objective",
+          "Scale": "linear"
+        }
+      },
+      "TimePlot": {
+        "X": {"Label": "iteration", "Scale": "linear"},
+        "Y": {"MetricName": "time", "Label": "Computation time (s)", "Scale": "log10"}
+      }
+    }
+  }
+}

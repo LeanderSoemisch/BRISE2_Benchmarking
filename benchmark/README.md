@@ -21,7 +21,7 @@ The general idea of writing benchmark scenario - automation of Experiment Descri
     called `self.execute_experiment` passing this description as an argument.
     - You could mark your benchmarking scenario as `@benchmarkable` to calculate the number of Experiments
     that are going to be performed before their actual execution and check the overall process of Scenarios generation.
-2. Add execution of this scenario in `run_benchmark` function of `entrypoint.py` module.
+2. Add execution of this scenario in `run_benchmark` function of `orchestrate_benchmark.py` module.
 3. Build an image, create a container and run the benchmark by calling `./init.sh up benchmark`
     * in case of failure you could restart benchmarking by running `./init.sh restart benchmark`.
     * benchmark enabled with __warm startup__ feature - in case of restart, the Experiments that were already performed
@@ -38,7 +38,7 @@ NOTE: By default the build_detailed_report() method provided in `BRISEBenchmarkA
 ___
 ### Structure
 - `./init.sh` provides control commands. For more information `./init.sh help`
-- `./entrypoint.py` is the logical entry point. Used to perform actual benchmark tests or for result analysis: in this case it combines a template with actual figures and generates a report file.
+- `./orchestrate_benchmark.py` is the logical entry point. Used to perform actual benchmark tests or for result analysis: in this case it combines a template with actual figures and generates a report file.
 - `./benchmark_runner.py` - module with functionality for running benchmark tests.
 - ~~`./benchmark_analyser.py` - module with functionality to perform benchmark results analysis.~~ is not available in 2.6.0
 - `./shared_tools.py` - storage with helper tools.

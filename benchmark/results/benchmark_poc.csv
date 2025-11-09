@@ -1,0 +1,6 @@
+Experiment,Objective,Iterations,Initial,Final best,Absolute improvement,Improvement %
+exp_test_GPR-Sobol-QuantityBased-TimeBasedSC_09/11/2025 13:02_8d4ff01_8d4ff01d,Y1,28,0.60758,0.30891,0.29867,49.16
+exp_test_GPR-Sobol-AcceptableErrorBased-TimeBasedSC_09/11/2025 13:02_e4ab3f5_e4ab3f52,Y1,26,0.440806,0.270415,0.170391,38.65
+exp_test_GPR-Sobol-QuantityBased-TimeBasedSC_09/11/2025 13:02_341d1d8_341d1d8e,Y1,10,0.269138,0.003569,0.265569,98.67
+exp_test_Model-Sobol-QuantityBased-TimeBasedSC_09/11/2025 13:02_be596bf_be596bf2,Y1,25,0.505951,0.330065,0.175886,34.76
+exp_test_Model-Sobol-QuantityBased-TimeBasedSC_09/11/2025 13:02_caf7670_caf7670a,Y1,29,0.381537,0.339769,0.041768,10.95

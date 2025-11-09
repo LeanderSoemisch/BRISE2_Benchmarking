@@ -43,7 +43,8 @@ class Experiment:
         # A unique ID, different for every experiment (even with the same description)
         self.unique_id = str(uuid.uuid4())
 
-        self.name: str = f"exp_{self.description['Context']['TaskConfiguration']['TaskName']}_{self.ed_id}"
+        # Build a readable, yet unique experiment name used for files and legends
+        self.name: str = self._build_descriptive_name()
 
         self.current_best_configurations: List[Configuration] = []
         self.bad_configurations_number = 0
@@ -502,3 +503,70 @@ class Experiment:
         record["is_model_valid"] = self.get_model_state()
         record["Number_of_measured_tasks"] = 0
         return record
+
+    def _build_descriptive_name(self) -> str:
+        """Compose a short, human-friendly name that still contains the ed_id.
+        Pattern: exp_<task>_<model>-<sampler>-<rep>-<sc>_<yymmddHHMM>_<ed7>_<full_edid>
+        All fragments are optional and omitted if not available.
+        """
+        def safe_get(dct, path, default=None):
+            cur = dct
+            for k in path:
+                if isinstance(cur, dict) and k in cur:
+                    cur = cur[k]
+                else:
+                    return default
+            return cur
+
+        task = safe_get(self._description, ["Context", "TaskConfiguration", "TaskName"], "task")
+
+        # Try to infer model/sampler/repeater/stop-condition short tags
+        sampler = None
+        try:
+            ss = safe_get(self._description, ["ConfigurationSelection", "SamplingStrategy"]) or {}
+            if isinstance(ss, dict) and ss:
+                sampler = list(ss.keys())[0]
+        except Exception:
+            sampler = None
+        sampler_tag = sampler or "Sampler"
+
+        surrogate = safe_get(self._description,
+                             ["ConfigurationSelection", "Predictor", "Model", "Surrogate", "Instance"]) or {}
+        model_tag = None
+        if isinstance(surrogate, dict) and surrogate:
+            model_tag = list(surrogate.keys())[0]
+        if not model_tag:
+            # alternative path
+            model_tag = safe_get(self._description,
+                                 ["ConfigurationSelection", "Predictor", "Model", "Instance"])
+            if isinstance(model_tag, dict) and model_tag:
+                model_tag = list(model_tag.keys())[0]
+        model_tag = (model_tag or "Model")
+        # Shorten a few well-known names
+        short_map = {
+            "TreeParzenEstimator": "TPE",
+            "GaussianProcessRegressor": "GPR",
+            "MOEA": "MOEA",
+            "RandomForestClassifier": "RF",
+        }
+        model_tag = short_map.get(model_tag, model_tag)
+
+        rep_inst = safe_get(self._description, ["RepetitionManager", "Instance"]) or {}
+        repeater_tag = None
+        if isinstance(rep_inst, dict) and rep_inst:
+            repeater_tag = list(rep_inst.keys())[0]
+        repeater_tag = repeater_tag or "Rep"
+
+        sc_inst = safe_get(self._description, ["StopCondition", "Instance"]) or {}
+        sc_tag = None
+        if isinstance(sc_inst, dict) and sc_inst:
+            sc_tag = list(sc_inst.keys())[0]
+        sc_tag = sc_tag or "SC"
+
+        ts = datetime.datetime.now().strftime("%y%m%d%H%M")
+        ed_short = self.ed_id[:7]
+
+        # include full ed_id at the end for compatibility with repetition counting logic
+        name = f"exp_{task}_{model_tag}-{sampler_tag}-{repeater_tag}-{sc_tag}_{ts}_{ed_short}_{self.ed_id}"
+        return name
+
