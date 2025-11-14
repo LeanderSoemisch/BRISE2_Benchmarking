@@ -1,0 +1,3 @@
+Task,Model,Sampler,ConfigurationStrategy,StopCondition,Experiment,Objective,Iterations,Initial,Final best,Absolute improvement,Improvement %,Runtime (s)
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y3,28,0.409859,0.246738,0.163121,39.8,62.063742
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y3,28,0.576247,0.162519,0.413729,71.8,60.47173

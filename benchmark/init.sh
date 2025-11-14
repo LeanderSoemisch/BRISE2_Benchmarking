@@ -39,6 +39,8 @@ help() {
   echo "   > remove_container - Remove the container."
   echo "   > bash - Attach bash console from benchmark container."
   echo "   > rate - Display how many Experiments were performed hourly since startup."
+  echo "   > waffle - Start Waffle configuration wizard (accessible at http://localhost:8001/wizard/initialize/)."
+  echo "   > show_report - Open the latest benchmark report (benchmark_poc.html) in your browser."
   echo "   > help - Display this help message."
   echo -e -n "$NORMAL"
   echo "-----------------------------------------------------------------------"
@@ -95,6 +97,11 @@ run_container() {
     --network=$BRISE_NETWORK                          \
     $IMAGE_NAME
 
+  # After container exits, check if HTML report was generated and open it
+  if [ -f ./results/benchmark_poc.html ]; then
+    log "Benchmark completed! Opening results..."
+    open_report ./results/benchmark_poc.html
+  fi
 
   [ $? != 0 ] && error "Container run failed!" && exit 105
 }
@@ -110,6 +117,26 @@ remove_image() {
   log "Removing image $IMAGE_NAME."
   docker rmi $IMAGE_NAME &> /dev/null
   log "Done!"
+}
+
+open_report(){
+  local report_path="$1"
+  log "Opening report: $report_path"
+
+  # Convert to absolute path and file URI
+  local abs_path=$(realpath "$report_path")
+  local file_uri="file://${abs_path}"
+
+  # Try to open in browser (suppress warnings)
+  if command -v xdg-open > /dev/null; then
+    xdg-open "$file_uri" > /dev/null 2>&1 &
+    log "Report opened in browser!"
+  elif command -v open > /dev/null; then
+    open "$file_uri" > /dev/null 2>&1 &
+    log "Report opened in browser!"
+  else
+    log "Please open the report manually: $abs_path"
+  fi
 }
 
 bash() {
@@ -140,6 +167,68 @@ execute_command_in_container(){
 rate(){
     log "executing check_file_appearance_rate under ./results/serialized folder"
     execute_command_in_container "/usr/bin/python3.12 shared_tools.py"
+}
+
+waffle(){
+    log "Starting Waffle configuration wizard"
+    cd ..
+
+    # Check if waffle is already running
+    if docker ps | grep -q waffle; then
+        log "Waffle is already running"
+    else
+        log "Starting waffle service via docker-compose"
+        docker compose up -d waffle
+    fi
+
+    echo ""
+    log "=========================================================================="
+    log "               Waffle Configuration Wizard is ready!                      "
+    log "=========================================================================="
+    echo ""
+    log "Step 1: Auto-opened http://localhost:8001/wizard/initialize/ in your browser"
+    log "Step 2: Copy the content from: $(pwd)/benchmark/benchmark_template.wfl"
+    log "Step 3: Paste the template into the wizard and click 'Configure product manually'"
+    log "Step 4: Fill in the configuration fields:"
+    log "        - Benchmark.ExperimentSeries.Name (e.g., 'MyBenchmark')"
+    log "        - Benchmark.ExperimentSeries.Description (e.g., 'Testing BRISE performance')"
+    log "        - Benchmark.Resources.Folder (e.g., './results/serialized/')"
+    log "        - etc.                                                                 "
+    log "        - Configure plot settings as needed"
+    log "Step 5: Click 'Download configured product' to get configuration.json"
+    log "Step 6: Save the downloaded file to: $(pwd)/benchmark/configuration.json"
+    log "Step 7: Run the benchmark with: ./init.sh up benchmark"
+    echo ""
+    log "=========================================================================="
+    echo ""
+
+    # Display template content for easy copying
+    echo ""
+    log "Template content (copy this into Waffle):"
+    echo "--------------------------------------------------------------------------"
+    cat "$(pwd)/benchmark/benchmark_template.wfl"
+    echo "--------------------------------------------------------------------------"
+    echo ""
+
+    # Try to open browser (suppress GTK/Firefox warnings)
+    if command -v xdg-open > /dev/null; then
+        xdg-open "http://localhost:8001/wizard/initialize/" > /dev/null 2>&1 &
+    elif command -v open > /dev/null; then
+        open "http://localhost:8001/wizard/initialize/" > /dev/null 2>&1 &
+    else
+        log "Please open http://localhost:8001/wizard/initialize/ in your browser"
+    fi
+
+    cd benchmark
+}
+
+show_report(){
+    if [ -f ./results/benchmark_poc.html ]; then
+        open_report ./results/benchmark_poc.html
+    else
+        error "No report found at ./results/benchmark_poc.html"
+        log "Run './init.sh up benchmark' to generate a report first."
+    fi
 }
 
 if [ -z ${1}  ]; then

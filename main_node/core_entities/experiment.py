@@ -279,6 +279,9 @@ class Experiment:
         :param configuration: Configuration object.
         :return: None
         """
+        # Add iteration timestamp
+        configuration.iteration_timestamp = datetime.datetime.now()
+        
         self.measured_configurations.append(configuration)
         if configuration.is_better(self.get_objectives_minimization(),
                                    self.current_best_configurations[0]):
@@ -333,7 +336,18 @@ class Experiment:
         if folder_path[-1] != "/" and folder_path[-1] != "\\":
             folder_path = folder_path + "/"
         os.makedirs(folder_path, exist_ok=True)
-        dump_path = folder_path + self.name + ".pkl"
+
+        # Check if file exists and append _2, _3, etc. if needed
+        base_name = self.name
+        dump_path = folder_path + base_name + ".pkl"
+        counter = 2
+        while os.path.exists(dump_path):
+            dump_path = folder_path + base_name + f"_{counter}.pkl"
+            counter += 1
+
+        # Update the name to include the suffix if one was added
+        if counter > 2:
+            self.name = base_name + f"_{counter - 1}"
 
         with open(dump_path, 'wb') as output:
             pickle.dump(self, output, pickle.HIGHEST_PROTOCOL)
@@ -505,9 +519,8 @@ class Experiment:
         return record
 
     def _build_descriptive_name(self) -> str:
-        """Compose a short, human-friendly name that still contains the ed_id.
-        Pattern: exp_<task>_<model>-<sampler>-<rep>-<sc>_<yymmddHHMM>_<ed7>_<full_edid>
-        All fragments are optional and omitted if not available.
+        """Compose a short, human-friendly name following the pattern:
+        exp_<task>_<model>_<sampler>_<configStrategy>_<stopCondition>
         """
         def safe_get(dct, path, default=None):
             cur = dct
@@ -520,7 +533,7 @@ class Experiment:
 
         task = safe_get(self._description, ["Context", "TaskConfiguration", "TaskName"], "task")
 
-        # Try to infer model/sampler/repeater/stop-condition short tags
+        # Try to infer model/sampler/configuration-strategy/stop-condition short tags
         sampler = None
         try:
             ss = safe_get(self._description, ["ConfigurationSelection", "SamplingStrategy"]) or {}
@@ -530,43 +543,59 @@ class Experiment:
             sampler = None
         sampler_tag = sampler or "Sampler"
 
-        surrogate = safe_get(self._description,
-                             ["ConfigurationSelection", "Predictor", "Model", "Surrogate", "Instance"]) or {}
+        # Model: search for any Model* key under Predictor (Model, Model_0, Model_1, etc.)
         model_tag = None
-        if isinstance(surrogate, dict) and surrogate:
-            model_tag = list(surrogate.keys())[0]
-        if not model_tag:
-            # alternative path
-            model_tag = safe_get(self._description,
-                                 ["ConfigurationSelection", "Predictor", "Model", "Instance"])
-            if isinstance(model_tag, dict) and model_tag:
-                model_tag = list(model_tag.keys())[0]
+        predictor = safe_get(self._description, ["ConfigurationSelection", "Predictor"])
+        if isinstance(predictor, dict):
+            # Find all keys that look like Model, Model_0, Model_1, etc.
+            model_keys = [k for k in predictor.keys() if k == "Model" or k.startswith("Model_")]
+
+            # Try to get Surrogate Instance from the first Model key found
+            for model_key_candidate in sorted(model_keys):
+                surrogate = safe_get(self._description,
+                    ["ConfigurationSelection", "Predictor", model_key_candidate, "Surrogate", "Instance"])
+                if isinstance(surrogate, dict) and surrogate:
+                    model_tag = list(surrogate.keys())[0]
+                    break
+
+            # Fallback: try Model.Instance if no Surrogate was found
+            if not model_tag:
+                for model_key_candidate in sorted(model_keys):
+                    model_inst = safe_get(self._description,
+                        ["ConfigurationSelection", "Predictor", model_key_candidate, "Instance"])
+                    if isinstance(model_inst, dict) and model_inst:
+                        model_tag = list(model_inst.keys())[0]
+                        break
+
         model_tag = (model_tag or "Model")
         # Shorten a few well-known names
         short_map = {
             "TreeParzenEstimator": "TPE",
             "GaussianProcessRegressor": "GPR",
             "MOEA": "MOEA",
-            "RandomForestClassifier": "RF",
+            "RandomForestClassifier": "RF"
         }
         model_tag = short_map.get(model_tag, model_tag)
 
+        # Configuration Strategy (repeater)
         rep_inst = safe_get(self._description, ["RepetitionManager", "Instance"]) or {}
-        repeater_tag = None
+        config_strategy_tag = None
         if isinstance(rep_inst, dict) and rep_inst:
-            repeater_tag = list(rep_inst.keys())[0]
-        repeater_tag = repeater_tag or "Rep"
+            config_strategy_tag = list(rep_inst.keys())[0]
+        config_strategy_tag = config_strategy_tag or "ConfigStrategy"
 
+        # Stop Condition
         sc_inst = safe_get(self._description, ["StopCondition", "Instance"]) or {}
         sc_tag = None
         if isinstance(sc_inst, dict) and sc_inst:
             sc_tag = list(sc_inst.keys())[0]
         sc_tag = sc_tag or "SC"
 
-        ts = datetime.datetime.now().strftime("%y%m%d%H%M")
-        ed_short = self.ed_id[:7]
+        # Remove 'sc' suffix if present
+        if sc_tag.lower().endswith('sc'):
+            sc_tag = sc_tag[:-2]
 
-        # include full ed_id at the end for compatibility with repetition counting logic
-        name = f"exp_{task}_{model_tag}-{sampler_tag}-{repeater_tag}-{sc_tag}_{ts}_{ed_short}_{self.ed_id}"
+        # Build base name without timestamp or hash, convert to lowercase
+        name = f"exp_{task}_{model_tag}_{sampler_tag}_{config_strategy_tag}_{sc_tag}".lower()
         return name
 

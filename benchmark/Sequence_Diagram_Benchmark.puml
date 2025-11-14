@@ -1,0 +1,69 @@
+@startuml Benchmark_Sequence_Diagram
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 20
+
+actor User #lightgreen
+participant "Orchestrator" as Orchestrator #lightyellow
+participant "Benchmark\nRunner" as BenchmarkRunner #lightblue
+participant "Main Node" as MainNode #lavender
+participant "RabbitMQ" as RabbitMQ #wheat
+participant "Worker" as Worker #lightcyan
+participant "Analyzer" as Analyzer #pink
+
+title BRISE Benchmark - High-Level Flow
+
+== 1. Initialization ==
+User -> Orchestrator: **Start Benchmark**\n//./init.sh up benchmark//
+activate Orchestrator
+Orchestrator -> BenchmarkRunner: run_benchmark()
+activate BenchmarkRunner
+
+== 2. Execute Experiments ==
+loop For each experiment
+
+    BenchmarkRunner ->> MainNode: **Start Experiment** (sync)\n//perform_experiment()//
+    activate MainNode
+    MainNode -->> BenchmarkRunner: ✓ Acknowledged\n//{'status': 'running'}//
+    note right of MainNode: Synchronous:\nRequest-Response
+
+    loop Optimization iterations
+        MainNode -> MainNode: **Select configurations**\n//ConfigurationSelection//
+        MainNode ->> Worker: **Execute tasks** (async)\n//task_queue//
+        activate Worker
+        note right of Worker: Asynchronous:\nEvent-driven
+        Worker -> Worker: **Run experiments**\n//worker_method()//
+        Worker -->> MainNode: **Task results**\n//task_result_exchange//
+        deactivate Worker
+        MainNode -> MainNode: **Update model**\n//add_configuration()//
+    end
+
+    MainNode -->> BenchmarkRunner: **Experiment complete** (async)\n//final_event()//
+    note left: Async notification\nwhen done
+
+    BenchmarkRunner ->> MainNode: **Download results** (sync)\n//download_latest_dump()//
+    MainNode -->> BenchmarkRunner: ✓ Results file\n//experiment.pkl//
+    deactivate MainNode
+    BenchmarkRunner -> BenchmarkRunner: **Store results**\n//./results/serialized///
+
+end
+
+BenchmarkRunner ->> MainNode: **Stop** (sync)\n//stop_main()//
+activate MainNode
+MainNode -->> BenchmarkRunner: ✓ Stopped
+deactivate MainNode
+deactivate BenchmarkRunner
+
+== 3. Analysis ==
+Orchestrator -> Analyzer: **Analyze results**\n//poc_analyzer_main()//
+activate Analyzer
+Analyzer -> Analyzer: **Load experiment data**\n//load dumps//
+Analyzer -> Analyzer: **Generate plots & report**\n//create visualizations//
+Analyzer -> User: **Open HTML report**\n//benchmark_poc.html//
+deactivate Analyzer
+deactivate Orchestrator
+
+@enduml
+

@@ -1,4 +1,4 @@
-# Benchmark :chart_with_upwards_trend:
+# Benchmark
  
 Service for running benchmark tests and performing a comparative analysis of experiment results.
 Designed for understanding, interpreting and assessment of the experiments' results.
@@ -13,6 +13,110 @@ To use `benchmark` mode:
 ___
 ### Usage
 __We strongly recommend to execute and control benchmark tests and analysis only in a dockerized way using provided `./init.sh` control script.__
+
+##### Configure benchmark using Waffle (recommended)
+1. Start the Waffle configuration wizard:
+   ```bash
+   ./init.sh waffle
+   ```
+   This will:
+   - Start the Waffle service via docker-compose
+   - Open your browser to http://localhost:8001/wizard/initialize/
+   
+2. In the Waffle wizard:
+   - Copy and paste the content of `benchmark_template.wfl` into the text field
+   - Click "Configure product manually"
+   - Fill in the required fields:
+     - `Benchmark.ExperimentSeries.Name`: Name for your experiment series
+     - `Benchmark.ExperimentSeries.Description`: Description of your benchmark
+     - `Benchmark.Resources.Folder`: Path to results folder (e.g., `./results/serialized/`)
+     - ...
+     - Configure plot settings for Improvement and Time plots as needed
+   - Click "Download configured product" to get `configuration.json`
+   
+3. Save the downloaded file as `./benchmark/configuration.json`
+
+4. Run the benchmark and analysis:
+   ```bash
+   ./init.sh up benchmark
+   ```
+   
+   After completion, the results will automatically open in your browser!
+   You can also manually open the report anytime with:
+   ```bash
+   ./init.sh show_report
+   ```
+
+## Configuration File Structure
+
+The downloaded `configuration.json` should have this structure:
+
+```json
+{
+  "Benchmark": {
+    "Resources": {
+      "Folder": "./results/serialized/"
+    },
+    "ExperimentSeries": {
+      "Name": "MyBenchmark",
+      "Description": "Description of the benchmark"
+    },
+    "Plots": {
+      "Improvement": {
+        "X": { ... },
+        "Y": { ... }
+      },
+      "Time": {
+        "X": { ... },
+        "Y": { ... }
+      }
+    }
+  }
+}
+```
+
+See `configuration.json.example` for a complete example.
+
+## Workflow Diagram
+
+```
+┌─────────────────┐
+│  Start Waffle   │
+│ ./init.sh waffle│
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│ Open http://localhost:8001  │
+│  /wizard/initialize/        │
+└────────┬────────────────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│ Paste benchmark_template.wfl│
+│ Click "Configure manually"  │
+└────────┬────────────────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│ Fill in configuration fields│
+│ - Name, Description         │
+│ - Folder paths              │
+│ - Plot settings             │
+└────────┬────────────────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│ Download configuration.json │
+│ Save to benchmark/ folder   │
+└────────┬────────────────────┘
+         │
+         ▼
+┌─────────────────────────────┐
+│  Run benchmark analysis     │
+│  ./init.sh up benchmark     │
+└─────────────────────────────┘
+```
 
 ##### Plan and run benchmark tests
 The general idea of writing benchmark scenario - automation of Experiment Description generation and execution.

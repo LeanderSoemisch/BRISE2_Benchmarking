@@ -1,14 +1,19 @@
 {
   "Benchmark": {
-    "ResultsSource": {
+    "Resources": {
       "Folder": "./results/serialized/"
     },
-    "Series": {
-      "LabelBy": "experiment_name"
+    "ExperimentSeries": {
+      "Name": "test cases",
+      "Description": "local testing of benchmark features"
     },
     "Plots": {
-      "ImprovementPlot": {
-        "X": {"Label": "iteration", "Scale": "linear"},
+      "Improvement": {
+        "X": {
+          "MetricName": "iterations completed",
+          "Label": "iteration",
+          "Scale": "linear"
+        },
         "Y": {
           "ObjectiveName": "Y1",
           "Normalize": true,
@@ -18,9 +23,20 @@
           "Scale": "linear"
         }
       },
-      "TimePlot": {
-        "X": {"Label": "iteration", "Scale": "linear"},
-        "Y": {"MetricName": "time", "Label": "Computation time (s)", "Scale": "log10"}
+      "Time": {
+        "X": {
+          "MetricName": "iterations completed",
+          "Label": "iteration",
+          "Scale": "linear"
+        },
+        "Y": {
+          "ObjectiveName": "Time",
+          "Normalize": false,
+          "Normalization": "",
+          "Direction": "",
+          "Label": "Computation time (s)",
+          "Scale": "log10"
+        }
       }
     }
   }

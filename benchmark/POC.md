@@ -36,4 +36,4 @@ Date: 09 Nov 2025 (updated)
 ![Diagram 1 Description](Waffle_Benchmark.png)
 
 ## Sequence Diagram
-![Diagram 1 Description](Sequence_Diagram_Benchmark.png)
+![Diagram 1 Description](Benchmark_Sequence_BRISE_High_Level_Flow.png)

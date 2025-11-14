@@ -15,15 +15,18 @@ abstract MetricAxis: Axis {
 }
 
 Benchmark {
-  ResultsSource {
+  Resources {
     Folder -> string
   }
-  Series {
-    LabelBy -> string
+  ExperimentSeries {
+    Name -> string
+    Description -> string
   }
   Plots {
-    ImprovementPlot {
-      X: Axis {
+    Improvement {
+      X: MetricAxis {
+        MetricName -> string
+        [MetricName = "iterations completed"]
         Label -> string
         [Label = "iteration"]
         Scale -> string
@@ -40,21 +43,25 @@ Benchmark {
         [Scale = "linear"]
       }
     }
-    TimePlot ? {
-      X: Axis {
+    Time {
+      X: MetricAxis {
+        MetricName -> string
+        [MetricName = "iterations completed"]
         Label -> string
         [Label = "iteration"]
         Scale -> string
         [Scale = "linear"]
       }
-      Y: MetricAxis {
-        MetricName -> string
+      Y: ObjectiveAxis {
+        ObjectiveName -> string
+        Normalize -> boolean
+        Normalization -> string
+        Direction -> string
         Label -> string
-        [Label = "Computation time (s)"]
-        Scale -> string // linear or log10
-        [Scale = "log10"]
+        [Label = "Normalised objective"]
+        Scale -> string
+        [Scale = "linear"]
       }
     }
   }
 }
-
