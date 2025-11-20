@@ -1,0 +1,14 @@
+Task,Model,Sampler,ConfigurationStrategy,StopCondition,Experiment,Objective,Iterations,Initial,Final best,Absolute improvement,Improvement %,Runtime (s)
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased,Y1,38,0.581089,0.266306,0.314783,54.17,63.899844
+test,gpr,sobol,acceptableerrorbased,timebased,exp_test_gpr_sobol_acceptableerrorbased_timebased,Y1,33,0.372616,0.174306,0.19831,53.22,62.522365
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_2,Y1,10,0.059057,0.059057,0.0,0.0,60.981756
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y1,25,0.474477,0.337431,0.137046,28.88,61.049698
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y1,28,0.432384,0.221197,0.211187,48.84,62.255597
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y2,25,0.502182,0.24444,0.257742,51.32,61.049698
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y2,28,0.740463,0.268283,0.47218,63.77,62.255597
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y3,25,0.246202,0.207988,0.038214,15.52,61.049698
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y3,28,0.513228,0.315532,0.197696,38.52,62.255597
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y4,25,0.578499,0.188029,0.39047,67.5,61.049698
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y4,28,0.569797,0.278125,0.291672,51.19,62.255597
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,Y5,25,0.436068,0.218304,0.217764,49.94,61.049698
+test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,Y5,28,0.333235,0.304765,0.02847,8.54,62.255597

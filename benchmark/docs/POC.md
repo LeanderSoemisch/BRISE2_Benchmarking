@@ -30,10 +30,11 @@ Date: 09 Nov 2025 (updated)
     - Refactoring (into multiple files and folders)
     - Enhance naming of test files and experiments for clarity
 
-- `benchmark_template.json` && `benchmark_template.wfl`
+- `configs/benchmark_templates/benchmark_template.json` && `/benchmark/configs/benchmark_feature_model/benchmark_feature_model.wfl`
   - Analyzer configuration: results folder, preferred improvement objective, direction, normalization method, optional time metric.
+  - Waffle feature model for configuration wizard
 ## Waffle Benchmark Schema
-![Diagram 1 Description](Waffle_Benchmark.png)
+![Diagram 1 Description](images/Waffle_Benchmark.png)
 
 ## Sequence Diagram
-![Diagram 1 Description](Benchmark_Sequence_BRISE_High_Level_Flow.png)
+![Diagram 1 Description](sequence_diagrams/Benchmark_Sequence_BRISE_High_Level_Flow.png)

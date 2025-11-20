@@ -13,12 +13,12 @@ from core_entities.configuration import Configuration
 from core_entities.experiment import Experiment
 from jinja2 import Environment, FileSystemLoader
 from plotly.offline import plot
-from plots.box_statistic import box_statistic
-from plots.exp_config import exp_description_highlight
-from plots.improvements import improvements
-from plots.repeat_vs_avg import repeat_vs_avg
+from benchmark.utils.plots.box_statistic import box_statistic
+from benchmark.utils.plots.exp_config import exp_description_highlight
+from benchmark.utils.plots.improvements import improvements
+from benchmark.utils.plots.repeat_vs_avg import repeat_vs_avg
 # Plots
-from plots.table import table
+from benchmark.utils.plots.table import table
 # Tools
 from shared_tools import chown_files_in_dir, get_resource_as_string
 from sortedcontainers import SortedDict
@@ -379,7 +379,7 @@ class BRISEBenchmarkAnalyser:
         """
 
         # --- Generate template
-        file_loader = FileSystemLoader("./templates")
+        file_loader = FileSystemLoader("utils/templates")
         env = Environment(loader=file_loader)
         env.globals['get_resource_as_string'] = get_resource_as_string
         template = env.get_template('index.html')

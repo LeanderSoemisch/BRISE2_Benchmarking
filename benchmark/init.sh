@@ -41,6 +41,7 @@ help() {
   echo "   > rate - Display how many Experiments were performed hourly since startup."
   echo "   > waffle - Start Waffle configuration wizard (accessible at http://localhost:8001/wizard/initialize/)."
   echo "   > show_report - Open the latest benchmark report (benchmark_poc.html) in your browser."
+  echo "   > cleanup - Remove all generated benchmark files (.pkl, .csv, .html, .zip)."
   echo "   > help - Display this help message."
   echo -e -n "$NORMAL"
   echo "-----------------------------------------------------------------------"
@@ -98,9 +99,9 @@ run_container() {
     $IMAGE_NAME
 
   # After container exits, check if HTML report was generated and open it
-  if [ -f ./results/benchmark_poc.html ]; then
+  if [ -f ./results/reports/benchmark_poc.html ]; then
     log "Benchmark completed! Opening results..."
-    open_report ./results/benchmark_poc.html
+    open_report ./results/reports/benchmark_poc.html
   fi
 
   [ $? != 0 ] && error "Container run failed!" && exit 105
@@ -187,7 +188,7 @@ waffle(){
     log "=========================================================================="
     echo ""
     log "Step 1: Auto-opened http://localhost:8001/wizard/initialize/ in your browser"
-    log "Step 2: Copy the content from: $(pwd)/benchmark/benchmark_template.wfl"
+    log "Step 2: Copy the content from: $(pwd)/benchmark/configs/benchmark_feature_model/benchmark_feature_model.wfl"
     log "Step 3: Paste the template into the wizard and click 'Configure product manually'"
     log "Step 4: Fill in the configuration fields:"
     log "        - Benchmark.ExperimentSeries.Name (e.g., 'MyBenchmark')"
@@ -196,7 +197,7 @@ waffle(){
     log "        - etc.                                                                 "
     log "        - Configure plot settings as needed"
     log "Step 5: Click 'Download configured product' to get configuration.json"
-    log "Step 6: Save the downloaded file to: $(pwd)/benchmark/configuration.json"
+    log "Step 6: Save the downloaded file to: $(pwd)/configuration.json"
     log "Step 7: Run the benchmark with: ./init.sh up benchmark"
     echo ""
     log "=========================================================================="
@@ -206,7 +207,7 @@ waffle(){
     echo ""
     log "Template content (copy this into Waffle):"
     echo "--------------------------------------------------------------------------"
-    cat "$(pwd)/benchmark/benchmark_template.wfl"
+    cat "$(pwd)/benchmark/configs/benchmark_feature_model/benchmark_feature_model.wfl"
     echo "--------------------------------------------------------------------------"
     echo ""
 
@@ -223,11 +224,45 @@ waffle(){
 }
 
 show_report(){
-    if [ -f ./results/benchmark_poc.html ]; then
-        open_report ./results/benchmark_poc.html
+    if [ -f ./results/reports/benchmark_poc.html ]; then
+        open_report ./results/reports/benchmark_poc.html
     else
-        error "No report found at ./results/benchmark_poc.html"
+        error "No report found at ./results/reports/benchmark_poc.html"
         log "Run './init.sh up benchmark' to generate a report first."
+    fi
+}
+
+cleanup(){
+    log "Cleaning up generated benchmark files..."
+
+    local cleaned_count=0
+
+    # Remove serialized .pkl files
+    if [ -d ./results/serialized ]; then
+        local pkl_count=$(find ./results/serialized -type f -name "*.pkl" 2>/dev/null | wc -l)
+        if [ "$pkl_count" -gt 0 ]; then
+            find ./results/serialized -type f -name "*.pkl" -delete 2>/dev/null
+            cleaned_count=$((cleaned_count + pkl_count))
+            log "Removed $pkl_count .pkl file(s) from ./results/serialized/"
+        fi
+    fi
+
+    # Remove CSV, HTML, and ZIP files from results root
+    if [ -d ./results/reports ]; then
+        for ext in csv html zip; do
+            local count=$(find ./results/reports -maxdepth 1 -type f -name "*.$ext" 2>/dev/null | wc -l)
+            if [ "$count" -gt 0 ]; then
+                find ./results/reports -maxdepth 1 -type f -name "*.$ext" -delete 2>/dev/null
+                cleaned_count=$((cleaned_count + count))
+                log "Removed $count .$ext file(s) from ./results/reports"
+            fi
+        done
+    fi
+
+    if [ "$cleaned_count" -eq 0 ]; then
+        log "No generated files found to clean up."
+    else
+        log "Cleanup completed: $cleaned_count file(s) removed."
     fi
 }
 

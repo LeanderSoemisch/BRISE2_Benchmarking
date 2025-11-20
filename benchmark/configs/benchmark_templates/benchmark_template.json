@@ -3,6 +3,9 @@
     "Resources": {
       "Folder": "./results/serialized/"
     },
+    "Report": {
+      "outputDirectory": "./results/reports/"
+    },
     "ExperimentSeries": {
       "Name": "test cases",
       "Description": "local testing of benchmark features"

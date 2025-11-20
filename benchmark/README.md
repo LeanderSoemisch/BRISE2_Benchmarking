@@ -47,6 +47,40 @@ __We strongly recommend to execute and control benchmark tests and analysis only
    ./init.sh show_report
    ```
 
+##### Cleaning Up Generated Files
+
+After and before running benchmarks, you can clean up all generated files (`.pkl`, `.csv`, `.html`, `.zip`):
+
+```bash
+./init.sh cleanup
+```
+
+This removes:
+- All experiment dumps (`.pkl` files) from `./results/serialized/`
+- All CSV files (benchmark results) from `./results/`
+- All HTML reports from `./results/`
+- All ZIP archives from `./results/`
+
+You can also use the Python orchestrator directly:
+```bash
+python3 orchestrate_benchmark.py --mode cleanup
+```
+
+Or include cleanup automatically after each benchmark run:
+```bash
+python3 orchestrate_benchmark.py --cleanup
+```
+
+##### Exporting Plots as SVG
+
+The generated HTML report includes "Export as SVG" buttons for each plot. Simply:
+1. Open the report in your browser (`./init.sh show_report`)
+2. Navigate to the plot you want to export
+3. Click the "Export as SVG" button below the plot
+4. The SVG file will be downloaded to your default downloads folder
+
+This allows you to use high-quality vector graphics in presentations and publications.
+
 ## Configuration File Structure
 
 The downloaded `configuration.json` should have this structure:

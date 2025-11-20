@@ -1,0 +1,52 @@
+abstract Axis {
+  Label -> string
+  Scale -> string
+}
+
+abstract ObjectiveAxis: Axis {
+  ObjectiveName -> string
+  Normalize -> boolean
+  Normalization -> string
+  Direction -> string
+}
+
+abstract MetricAxis: Axis {
+  MetricName -> string
+}
+
+Benchmark {
+  Report {
+    outputDirectory -> string
+  }
+
+  Experiment {
+    name -> string
+    description -> string
+    objectivesToMeasure -> array
+  }
+
+  Table 0..1 {
+    columns -> array
+    // [all columns in ("iterations", "initial_value", "final_best_value", "improvement", "absolute_improvement", "runtime")]
+  }
+
+  Plots 0..3 {
+    MetricAxis {
+        metricDescription -> string
+        label -> string
+        scale -> string
+        [scale in {"linear", "log10"}]
+      }
+      ObjectiveAxis {
+        objectivesToPlot -> array
+        // Each element should be an objective name from Experiment.objectivesToMeasure
+        // [all objectivesToPlot in Benchmark.Experiment.objectivesToMeasure]
+        normalize -> boolean
+        normalization -> string
+        [normalization in {"min_over_all_experiments", "max_over_all_experiments"}]
+        label -> string
+        scale -> string
+        [scale in {"linear", "log10"}]
+    }
+  }
+}

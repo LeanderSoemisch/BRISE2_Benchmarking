@@ -15,6 +15,15 @@ import webbrowser
 from pathlib import Path
 import numpy as np
 
+# Import hypervolume analysis modules
+try:
+    from hypervolume_analysis import HypervolumeCalculator, HypervolumeTracker
+    from hypervolume_visualization import HypervolumePlotter
+    HYPERVOLUME_AVAILABLE = True
+except ImportError:
+    HYPERVOLUME_AVAILABLE = False
+    print("Warning: Hypervolume analysis not available. Install pygmo for hypervolume support.")
+
 
 # Ensure pickled modules like 'core_entities' are importable when unpickling
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +48,7 @@ def _safe(obj: Dict, path: List[str], default=None):
 @dataclass
 class AnalyzerConfig:
     results_folder: str
+    output_directory: str  # Where to save reports (.html, .csv, .zip)
     improvement_objective: Optional[str]
     improvement_direction: str  # 'minimize' | 'maximize'
     improvement_normalize: bool
@@ -57,6 +67,11 @@ class AnalyzerConfig:
             b.get("Resources", {}).get("Folder")
             or b.get("ResultsSource", {}).get("Folder")
             or "./results/serialized/"
+        )
+        # Support new schema: Report.outputDirectory; default to ./results/reports/
+        output_dir = (
+            b.get("Report", {}).get("outputDirectory")
+            or "./results/reports/"
         )
         # ExperimentSeries vs Series
         series = b.get("ExperimentSeries", b.get("Series", {})) or {}
@@ -80,6 +95,7 @@ class AnalyzerConfig:
 
         return AnalyzerConfig(
             results_folder=folder,
+            output_directory=output_dir,
             improvement_objective=improvement_objective,
             improvement_direction=y_impr.get("Direction", "minimize"),
             improvement_normalize=y_impr.get("Normalize", True),
@@ -563,26 +579,30 @@ class ReportBuilder:
             download_link = f"<div class='download-row'><a class='download-link' href='{csv_rel}' download>Download {obj} CSV</a></div>" if csv_rel else ''
 
             # Build tab content: improvement plot + time-vs-objective plot (if available) + table
-            plots_html = f"<div class='plot-wrapper'>{fig.to_html(include_plotlyjs=False, full_html=False)}</div>"
+            plot_id = f"plot_{div_id}"
+            plots_html = f"<div class='plot-container'><div class='plot-wrapper' id='{plot_id}'>{fig.to_html(include_plotlyjs=False, full_html=False)}</div><button class='export-btn' onclick='exportPlotAsSVG(\"{plot_id}\", \"{obj}_improvement\")'>Export as SVG</button></div>"
 
             # Add time vs objective plot if available for this objective
             if obj in objective_time_figs:
                 time_obj_fig = objective_time_figs[obj]
-                plots_html += f"<div class='plot-wrapper'>{time_obj_fig.to_html(include_plotlyjs=False, full_html=False)}</div>"
+                time_plot_id = f"plot_{div_id}_time"
+                plots_html += f"<div class='plot-container'><div class='plot-wrapper' id='{time_plot_id}'>{time_obj_fig.to_html(include_plotlyjs=False, full_html=False)}</div><button class='export-btn' onclick='exportPlotAsSVG(\"{time_plot_id}\", \"{obj}_vs_time\")'>Export as SVG</button></div>"
 
             tab_inner = f"{plots_html}{download_link}<div class='table-wrapper'>{table_html}</div>"
             tabs_html.append(f"<div id='{div_id}' class='tab-content' style='display:{'block' if i==0 else 'none'}'>{tab_inner}</div>")
 
         if time_fig:
-            tabs_html.append(f"<div id='time_tab' class='tab-content' style='display:none'>{time_fig.to_html(include_plotlyjs=False, full_html=False)}</div>")
+            time_plot_id = 'plot_time_tab'
+            tabs_html.append(f"<div id='time_tab' class='tab-content' style='display:none'><div class='plot-container'><div class='plot-wrapper' id='{time_plot_id}'>{time_fig.to_html(include_plotlyjs=False, full_html=False)}</div><button class='export-btn' onclick='exportPlotAsSVG(\"{time_plot_id}\", \"elapsed_time\")'>Export as SVG</button></div></div>")
             tab_buttons.append("<button class='tab-btn' onclick=showTab('time_tab',this)>time</button>")
 
 
         # Add runtime tab
         if runtime_fig:
             div_id = 'runtime_tab'
+            runtime_plot_id = 'plot_runtime_tab'
             runtime_csv_link = f"<div class='download-row'><a class='download-link' href='{runtime_csv}' download>Download Runtime CSV</a></div>" if runtime_csv else ''
-            tab_inner = f"<div class='plot-wrapper'>{runtime_fig.to_html(include_plotlyjs=False, full_html=False)}</div>{runtime_csv_link}"
+            tab_inner = f"<div class='plot-container'><div class='plot-wrapper' id='{runtime_plot_id}'>{runtime_fig.to_html(include_plotlyjs=False, full_html=False)}</div><button class='export-btn' onclick='exportPlotAsSVG(\"{runtime_plot_id}\", \"runtime\")'>Export as SVG</button></div>{runtime_csv_link}"
             tabs_html.append(f"<div id='{div_id}' class='tab-content' style='display:none'>{tab_inner}</div>")
             tab_buttons.append("<button class='tab-btn' onclick=showTab('runtime_tab',this)>runtime</button>")
 
@@ -616,6 +636,10 @@ class ReportBuilder:
         .download-link.all {{background:#2d6db3;margin-bottom:12px;}}
         .download-link.all:hover {{background:#245b91;}}
         .global-download {{text-align:right;}}
+        .plot-container {{margin-bottom:20px;}}
+        .plot-wrapper {{margin-bottom:8px;}}
+        .export-btn {{background:#27ae60;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.75em;font-weight:600;margin-bottom:10px;}}
+        .export-btn:hover {{background:#229954;}}
         footer {{margin-top:46px;padding-top:14px;font-size:.65em;color:#6b7b8c;text-align:center;border-top:1px solid #dfe6ec;}}
         </style>
         <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
@@ -630,6 +654,26 @@ class ReportBuilder:
                     if(p.offsetParent !== null) Plotly.Plots.resize(p);
                 }});
             }},50);
+        }}
+        function exportPlotAsSVG(containerId, fileName){{
+            // Find the plotly div within the container
+            var container = document.getElementById(containerId);
+            if (!container) {{
+                console.error('Container not found:', containerId);
+                return;
+            }}
+            var plotDiv = container.querySelector('.js-plotly-plot');
+            if (!plotDiv) {{
+                console.error('Plotly plot not found in container:', containerId);
+                return;
+            }}
+            // Use Plotly's downloadImage function to export as SVG
+            Plotly.downloadImage(plotDiv, {{
+                format: 'svg',
+                width: 1200,
+                height: 600,
+                filename: fileName
+            }});
         }}
         window.addEventListener('load', function(){{
             setTimeout(function(){{
@@ -653,7 +697,7 @@ class ReportBuilder:
         return page
 
 
-def main(template_json_path: str = './benchmark_template.json', output_html: str = './results/benchmark_poc.html', output_csv: str = './results/benchmark_all_objectives.csv'):
+def main(template_json_path: str = './configs/benchmark_templates/benchmark_template.json', output_html: str = './results/reports/benchmark_poc.html', output_csv: str = './results/reports/benchmark_all_objectives.csv'):
     with open(template_json_path, 'r') as f:
         cfg = AnalyzerConfig.from_json(json.load(f))
 
