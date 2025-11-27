@@ -1,0 +1,45 @@
+@startuml Benchmark_Sequence_Diagram
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 20
+
+actor User #lightgreen
+participant "Orchestrator" as Orchestrator #lightyellow
+participant "Benchmark\nRunner" as BenchmarkRunner #lightblue
+participant "Main Node" as MainNode #lavender
+participant "RabbitMQ" as RabbitMQ #wheat
+participant "Worker" as Worker #lightcyan
+participant "Analyzer" as Analyzer #pink
+
+== 2. Execute Experiments (continued) ==
+
+MainNode ->> RabbitMQ: **Publish completion event**\n//final_event()//
+activate RabbitMQ
+RabbitMQ -->> BenchmarkRunner: **Experiment complete** (async)
+deactivate RabbitMQ
+
+BenchmarkRunner ->> MainNode: **Download results** (sync)\n//download_latest_dump()//
+MainNode -->> BenchmarkRunner: ✓ Results file\n//experiment.pkl//
+deactivate MainNode
+
+BenchmarkRunner -> BenchmarkRunner: **Store results**\n//./results/serialized///
+
+note over BenchmarkRunner
+  Repeat for all experiments
+  in the benchmark suite
+end note
+
+BenchmarkRunner ->> MainNode: **Stop** (sync)\n//stop_main()//
+activate MainNode
+MainNode -> RabbitMQ: **Disconnect & cleanup**
+activate RabbitMQ
+RabbitMQ --> MainNode: ✓ Disconnected
+deactivate RabbitMQ
+MainNode -->> BenchmarkRunner: ✓ Stopped
+deactivate MainNode
+deactivate BenchmarkRunner
+
+@enduml
+

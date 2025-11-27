@@ -1,0 +1,44 @@
+@startuml Benchmark_Sequence_Diagram
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 20
+
+actor User #lightgreen
+participant "Orchestrator" as Orchestrator #lightyellow
+participant "Benchmark\nRunner" as BenchmarkRunner #lightblue
+participant "Main Node" as MainNode #lavender
+participant "RabbitMQ" as RabbitMQ #wheat
+participant "Worker" as Worker #lightcyan
+participant "Analyzer" as Analyzer #pink
+
+title BRISE Benchmark - High-Level Overview
+
+User -> Orchestrator: **1. Start Benchmark**
+activate Orchestrator
+Orchestrator -> BenchmarkRunner: Initialize
+activate BenchmarkRunner
+
+BenchmarkRunner -> MainNode: **2. Run Experiments**
+activate MainNode
+MainNode -> RabbitMQ: Task distribution
+activate RabbitMQ
+RabbitMQ -> Worker: Execute tasks
+activate Worker
+Worker --> RabbitMQ: Results
+deactivate Worker
+RabbitMQ --> MainNode: Results
+deactivate RabbitMQ
+MainNode --> BenchmarkRunner: Complete
+deactivate MainNode
+
+BenchmarkRunner -> Analyzer: **3. Analyze Results**
+activate Analyzer
+Analyzer -> User: Report
+deactivate Analyzer
+deactivate BenchmarkRunner
+deactivate Orchestrator
+
+@enduml
+

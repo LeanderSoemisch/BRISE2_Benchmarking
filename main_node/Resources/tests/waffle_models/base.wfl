@@ -1,5 +1,21 @@
 // ----------------------Abstract features-----------------------
 
+abstract Axis {
+  Label -> string
+  Scale -> string
+}
+
+abstract ObjectiveAxis: Axis {
+  ObjectiveName -> string
+  Normalize -> boolean
+  Normalization -> string
+  Direction -> string
+}
+
+abstract MetricAxis: Axis {
+  MetricName -> string
+}
+
 abstract Hyperparameter {
   Type -> predefined
   Level -> integer
@@ -843,3 +859,113 @@ DefaultConfigurationHandler ? {
     [Type = "random_default_config_handler"]
   }
 }
+
+// ----------------------Benchmark Features-----------------------
+Benchmark ? {
+  Report {
+    outputDirectory -> string
+  }
+
+  Experiment {
+    name -> string
+    description -> string
+    objectivesToMeasure -> array
+    // Link to Context.TaskConfiguration.Objectives
+    [all objectivesToMeasure in (childs.Context.TaskConfiguration.Objectives.Name)]
+  }
+
+  Table ? {
+    task -> boolean
+    model -> boolean
+    sampler -> boolean
+    configurationStrategy -> boolean
+    stopCondition -> boolean
+    experiment -> boolean
+    objective -> boolean
+    iterations -> boolean
+    initialValue -> boolean
+    finalBestValue -> boolean
+    improvementPercentage -> boolean
+    improvementAbsolute -> boolean
+    runtime -> boolean
+  }
+
+  Plot * {
+    xor PlotType {
+      ImprovementPlot {
+        Type -> predefined
+        [Type = 'improvement_plot']
+
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
+        ObjectiveAxis {
+          objectivesToPlot -> array
+          // Link to Benchmark.Experiment.objectivesToMeasure
+          [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
+          normalize -> boolean
+          xor NormalizationStrategy {
+              MinOverAll {
+                Type -> predefined
+                [Type = 'min_over_all_experiments']
+              }
+              MaxOverAll {
+                Type -> predefined
+                [Type = 'max_over_all_experiments']
+              }
+            }
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
+      }
+
+      /* HypervolumePlot {
+        Type -> predefined
+        [Type = 'hypervolume_plot']
+
+        Objectives -> array
+        // Link to Benchmark.Experiment.objectivesToMeasure
+        [all Objectives in parent.parent.parent.Experiment.objectivesToMeasure]
+        ReferencePoint -> array
+        // Reference point must match number of objectives
+        [size ReferencePoint == size Objectives]
+      } */
+
+      CustomPlot {
+        Type -> predefined
+        [Type = 'parallel_coordinates_plot']
+
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+      }
+          ObjectiveAxis {
+           objectivesToPlot -> array
+           // Link to Benchmark.Experiment.objectivesToMeasure
+           [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
+           normalize -> boolean
+           xor NormalizationStrategy {
+              MinOverAll {
+                Type -> predefined
+                [Type = 'min_over_all_experiments']
+              }
+              MaxOverAll {
+                Type -> predefined
+                [Type = 'max_over_all_experiments']
+              }
+           }
+           label -> string
+           scale -> string
+           [scale in {"linear", "log10"}]
+        }
+      }
+    }
+  }
+}
+

@@ -40,7 +40,7 @@ help() {
   echo "   > bash - Attach bash console from benchmark container."
   echo "   > rate - Display how many Experiments were performed hourly since startup."
   echo "   > waffle - Start Waffle configuration wizard (accessible at http://localhost:8001/wizard/initialize/)."
-  echo "   > show_report - Open the latest benchmark report (benchmark_poc.html) in your browser."
+  echo "   > show_report - Open the latest benchmark report (benchmark_report.html) in your browser."
   echo "   > cleanup - Remove all generated benchmark files (.pkl, .csv, .html, .zip)."
   echo "   > help - Display this help message."
   echo -e -n "$NORMAL"
@@ -99,9 +99,9 @@ run_container() {
     $IMAGE_NAME
 
   # After container exits, check if HTML report was generated and open it
-  if [ -f ./results/reports/benchmark_poc.html ]; then
+  if [ -f ./results/reports/benchmark_report.html ]; then
     log "Benchmark completed! Opening results..."
-    open_report ./results/reports/benchmark_poc.html
+    open_report ./results/reports/benchmark_report.html
   fi
 
   [ $? != 0 ] && error "Container run failed!" && exit 105
@@ -224,10 +224,10 @@ waffle(){
 }
 
 show_report(){
-    if [ -f ./results/reports/benchmark_poc.html ]; then
-        open_report ./results/reports/benchmark_poc.html
+    if [ -f ./results/reports/benchmark_report.html ]; then
+        open_report ./results/reports/benchmark_report.html
     else
-        error "No report found at ./results/reports/benchmark_poc.html"
+        error "No report found at ./results/reports/benchmark_report.html"
         log "Run './init.sh up benchmark' to generate a report first."
     fi
 }

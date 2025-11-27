@@ -37,7 +37,7 @@ yarn-error.log*
 front_end/text.txt
 
 # Generated experiment files (dumps) are excluded since they can be large and are not human-readable
-benchmark/results/serialized
+benchmark/results/*
 
 # User-generated benchmark configuration from Waffle
 benchmark/configuration.json

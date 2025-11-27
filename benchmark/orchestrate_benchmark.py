@@ -43,7 +43,7 @@ def analyze(results_storage: str = "./results/serialized/"):
         config_path = "./configuration.json" if os.path.exists("./configuration.json") else "./configs/benchmark_templates/benchmark_template.json"
         logging.info(f"Running analyzer on dumps in {results_storage} using config: {config_path}")
         poc_analyzer_main(template_json_path=config_path)
-        logging.info("Analyzer completed: ./results/reports/benchmark_poc.html , ./results/reports/benchmark_all_objectives.csv")
+        logging.info("Analyzer completed: ./results/reports/benchmark_report.html , ./results/reports/benchmark_all_objectives.csv")
     except FileNotFoundError as fnf_err:
         logging.warning("Analyzer skipped: %s" % fnf_err)
     except Exception as exception:

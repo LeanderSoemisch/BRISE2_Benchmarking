@@ -1,0 +1,61 @@
+@startuml Benchmark_Sequence_Diagram
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam BoxPadding 10
+skinparam ParticipantPadding 20
+
+actor User #lightgreen
+participant "Orchestrator" as Orchestrator #lightyellow
+participant "Benchmark\nRunner" as BenchmarkRunner #lightblue
+participant "Main Node" as MainNode #lavender
+participant "RabbitMQ" as RabbitMQ #wheat
+participant "Worker" as Worker #lightcyan
+participant "Analyzer" as Analyzer #pink
+
+== 3. Analysis ==
+BenchmarkRunner -->> Orchestrator: All experiments complete
+Orchestrator -> Analyzer: **Analyze results**\n//poc_analyzer_main()//
+activate Analyzer
+
+Analyzer -> Analyzer: **Load all experiment dumps**
+note right
+  From: ./results/serialized/
+  Load: experiment_*.pkl
+end note
+
+Analyzer -> Analyzer: **Compute statistics**
+note right
+  - Performance metrics
+  - Convergence analysis
+  - Comparison plots
+end note
+
+Analyzer -> Analyzer: **Generate visualizations**
+note right
+  Create plots:
+  - Optimization progress
+  - Configuration heatmaps
+  - Performance comparison
+end note
+
+Analyzer -> Analyzer: **Create HTML report**
+note right
+  Template: report_template.html
+  Output: benchmark_report.html
+end note
+
+Analyzer -> User: **Open HTML report**
+note right
+  Interactive report with:
+  - Summary statistics
+  - Plots and charts
+  - Detailed results
+end note
+deactivate Analyzer
+deactivate Orchestrator
+
+User -> User: **Review results**
+
+@enduml
+

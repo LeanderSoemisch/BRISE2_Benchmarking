@@ -1,3 +1,5 @@
+// ----------------------Abstract Benchmark Features-----------------------
+
 abstract Axis {
   Label -> string
   Scale -> string
@@ -14,6 +16,8 @@ abstract MetricAxis: Axis {
   MetricName -> string
 }
 
+// ----------------------Benchmark Features-----------------------
+
 Benchmark {
   Report {
     outputDirectory -> string
@@ -25,28 +29,116 @@ Benchmark {
     objectivesToMeasure -> array
   }
 
-  Table 0..1 {
-    columns -> array
-    // [all columns in ("iterations", "initial_value", "final_best_value", "improvement", "absolute_improvement", "runtime")]
+  Table ? {
+    task -> boolean
+    model -> boolean
+    sampler -> boolean
+    configurationStrategy -> boolean
+    stopCondition -> boolean
+    experiment -> boolean
+    objective -> boolean
+    iterations -> boolean
+    initialValue -> boolean
+    finalBestValue -> boolean
+    improvementPercentage -> boolean
+    improvementAbsolute -> boolean
+    runtime -> boolean
   }
 
-  Plots 0..3 {
-    MetricAxis {
-        metricDescription -> string
-        label -> string
-        scale -> string
-        [scale in {"linear", "log10"}]
+  Plot * {
+    xor PlotType {
+      ImprovementPlot {
+        Type -> predefined
+        [Type = 'improvement_plot']
+        
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
+        ObjectiveAxis {
+          objectivesToPlot -> array
+          // Each element should be an objective name from Experiment.objectivesToMeasure
+          // [all objectivesToPlot in Benchmark.Experiment.objectivesToMeasure]
+          normalize -> boolean
+          xor NormalizationStrategy {
+              MinOverAll {
+                Type -> predefined
+                [Type = 'min_over_all_experiments']
+              }
+              MaxOverAll {
+                Type -> predefined
+                [Type = 'max_over_all_experiments']
+              }
+            }
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
       }
-      ObjectiveAxis {
-        objectivesToPlot -> array
-        // Each element should be an objective name from Experiment.objectivesToMeasure
-        // [all objectivesToPlot in Benchmark.Experiment.objectivesToMeasure]
-        normalize -> boolean
-        normalization -> string
-        [normalization in {"min_over_all_experiments", "max_over_all_experiments"}]
-        label -> string
-        scale -> string
-        [scale in {"linear", "log10"}]
+
+      HypervolumePlot {
+        Type -> predefined
+        [Type = 'hypervolume_plot']
+        
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
+          ObjectiveAxis {
+           objectivesToPlot -> array
+           // Each element should be an objective name from Experiment.objectivesToMeasure
+           // [all objectivesToPlot in Benchmark.Experiment.objectivesToMeasure]
+           normalize -> boolean
+           xor NormalizationStrategy {
+              MinOverAll {
+                Type -> predefined
+                [Type = 'min_over_all_experiments']
+              }
+              MaxOverAll {
+                Type -> predefined
+                [Type = 'max_over_all_experiments']
+              }
+           }
+           label -> string
+           scale -> string
+           [scale in {"linear", "log10"}]
+        }
+      }
+      
+      CustomPlot {
+        Type -> predefined
+        [Type = 'parallel_coordinates_plot']
+        
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+        }
+          ObjectiveAxis {
+           objectivesToPlot -> array
+           // Each element should be an objective name from Experiment.objectivesToMeasure
+           // [all objectivesToPlot in Benchmark.Experiment.objectivesToMeasure]
+           normalize -> boolean
+           xor NormalizationStrategy {
+              MinOverAll {
+                Type -> predefined
+                [Type = 'min_over_all_experiments']
+              }
+              MaxOverAll {
+                Type -> predefined
+                [Type = 'max_over_all_experiments']
+              }
+           }
+           label -> string
+           scale -> string
+           [scale in {"linear", "log10"}]
+        }
+      }
     }
   }
 }

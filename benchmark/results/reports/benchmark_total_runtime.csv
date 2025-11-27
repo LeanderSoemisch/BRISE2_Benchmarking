@@ -1,6 +1,0 @@
-Task,Model,Sampler,ConfigurationStrategy,StopCondition,Experiment,Runtime (s)
-test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased,63.8998
-test,gpr,sobol,acceptableerrorbased,timebased,exp_test_gpr_sobol_acceptableerrorbased_timebased,62.5224
-test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_2,60.9818
-test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_3,61.0497
-test,gpr,sobol,quantitybased,timebased,exp_test_gpr_sobol_quantitybased_timebased_4,62.2556
