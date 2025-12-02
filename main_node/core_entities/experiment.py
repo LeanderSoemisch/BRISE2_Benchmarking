@@ -519,8 +519,11 @@ class Experiment:
         return record
 
     def _build_descriptive_name(self) -> str:
-        """Compose a short, human-friendly name following the pattern:
-        exp_<task>_<model>_<sampler>_<configStrategy>_<stopCondition>
+        """Compose a short name following the pattern:
+        exp_<task>_<model>_<sampler>_<configStrategy>_<stopCondition>_<benchmarkId>
+
+        The BenchmarkIdentifier is appended at the end to differentiate test cases
+        while keeping the standard structure for table parsing.
         """
         def safe_get(dct, path, default=None):
             cur = dct
@@ -595,7 +598,10 @@ class Experiment:
         if sc_tag.lower().endswith('sc'):
             sc_tag = sc_tag[:-2]
 
-        # Build base name without timestamp or hash, convert to lowercase
-        name = f"exp_{task}_{model_tag}_{sampler_tag}_{config_strategy_tag}_{sc_tag}".lower()
+        benchmark_id = safe_get(self._description, ["Context", "BenchmarkIdentifier"], None)
+
+        # Build base name with standard structure, convert to lowercase and append benchmark identifier
+        name = f"exp_{task}_{model_tag}_{sampler_tag}_{config_strategy_tag}_{sc_tag}_{benchmark_id}".lower()
+
         return name
 

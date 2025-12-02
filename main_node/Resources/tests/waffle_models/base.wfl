@@ -860,7 +860,7 @@ DefaultConfigurationHandler ? {
   }
 }
 
-// ----------------------Benchmark Features-----------------------
+// ----------------------Benchmark-----------------------
 Benchmark ? {
   Report {
     outputDirectory -> string
@@ -871,7 +871,7 @@ Benchmark ? {
     description -> string
     objectivesToMeasure -> array
     // Link to Context.TaskConfiguration.Objectives
-    [all objectivesToMeasure in (childs.Context.TaskConfiguration.Objectives.Name)]
+    // [all objectivesToMeasure in (childs.Context.TaskConfiguration.Objectives.Name)]
   }
 
   Table ? {
@@ -905,7 +905,7 @@ Benchmark ? {
         ObjectiveAxis {
           objectivesToPlot -> array
           // Link to Benchmark.Experiment.objectivesToMeasure
-          [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
+          // [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
           normalize -> boolean
           xor NormalizationStrategy {
               MinOverAll {
@@ -929,7 +929,7 @@ Benchmark ? {
 
         Objectives -> array
         // Link to Benchmark.Experiment.objectivesToMeasure
-        [all Objectives in parent.parent.parent.Experiment.objectivesToMeasure]
+        // [all Objectives in parent.parent.parent.Experiment.objectivesToMeasure]
         ReferencePoint -> array
         // Reference point must match number of objectives
         [size ReferencePoint == size Objectives]
@@ -948,7 +948,7 @@ Benchmark ? {
           ObjectiveAxis {
            objectivesToPlot -> array
            // Link to Benchmark.Experiment.objectivesToMeasure
-           [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
+           // [all objectivesToPlot in parent.parent.parent.Experiment.objectivesToMeasure]
            normalize -> boolean
            xor NormalizationStrategy {
               MinOverAll {

@@ -1,11 +1,22 @@
 import argparse
+import json
 import logging
-
-from benchmark_runner import BRISEBenchmarkRunner
-from logger.default_logger import BRISELogConfigurator
-from shared_tools import chown_files_in_dir, cleanup_benchmark_results
-from poc_analyzer import main as poc_analyzer_main
 import os
+import sys
+from pathlib import Path
+
+from runner.benchmark_runner import BRISEBenchmarkRunner
+from logger.default_logger import BRISELogConfigurator
+from util.shared_tools import chown_files_in_dir, cleanup_benchmark_results
+
+# Add main_node to path for unpickling experiment objects
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MAIN_NODE_PATH = str(PROJECT_ROOT / 'main_node')
+if MAIN_NODE_PATH not in sys.path:
+    sys.path.insert(0, MAIN_NODE_PATH)
+
+from analyzer.config import BenchmarkConfig
+from analyzer.orchestration import BenchmarkAnalyzer
 
 BRISELogConfigurator()  # Configuring logging
 
@@ -36,14 +47,30 @@ def run_benchmark():
         logging.error("Unable to create BRISEBenchmarkRunner: %s" % exception, exc_info=True)
 
 
-def analyze(results_storage: str = "./results/serialized/"):
-    """Run analyzer over produced experiment dumps."""
+def analyze(
+    results_storage: str = "./results/serialized/",
+    output_html: str = "./results/reports/benchmark_report.html",
+    output_csv: str = "./results/reports/benchmark_all_objectives.csv"
+):
+    """Run analyzer over produced experiment dumps.
+
+    Args:
+        results_storage: Path to folder with experiment dumps
+        output_html: Path for output HTML report
+        output_csv: Path for combined CSV output
+    """
     try:
         # Check for configuration.json (from Waffle) first, then fall back to benchmark_template.json
-        config_path = "./configuration.json" if os.path.exists("./configuration.json") else "./configs/benchmark_templates/benchmark_template.json"
+        config_path = "./configuration.json" if os.path.exists("./configuration.json") else "./configs/benchmark_templates/benchmark_template_with_hypervolume.json"
         logging.info(f"Running analyzer on dumps in {results_storage} using config: {config_path}")
-        poc_analyzer_main(template_json_path=config_path)
-        logging.info("Analyzer completed: ./results/reports/benchmark_report.html , ./results/reports/benchmark_all_objectives.csv")
+
+        with open(config_path, 'r') as f:
+            config = BenchmarkConfig.from_json(json.load(f))
+
+        analyzer = BenchmarkAnalyzer(config)
+        analyzer.analyze(output_html, output_csv)
+
+        logging.info(f"Analyzer completed: {output_html} , {output_csv}")
     except FileNotFoundError as fnf_err:
         logging.warning("Analyzer skipped: %s" % fnf_err)
     except Exception as exception:

@@ -34,7 +34,16 @@ Date: 09 Nov 2025 (updated)
   - Analyzer configuration: results folder, preferred improvement objective, direction, normalization method, optional time metric.
   - Waffle feature model for configuration wizard
 ## Waffle Benchmark Schema
-![Diagram 1 Description](images/Waffle_Benchmark.png)
+![Diagram 1 Description](feature_model/Attributed_Waffle_Benchmark_Feature_Model.png)
 
-## Sequence Diagram
-![Diagram 1 Description](sequence_diagrams/Benchmark_Sequence_BRISE_High_Level_Flow.png)
+## Architecture Diagrams
+
+### Simplified Overview (Recommended Starting Point)
+- **[Detail_04c_Simplified_Analysis_Architecture.puml](presentation/Detail_04c_Simplified_Analysis_Architecture.puml)** ⭐ **Start here!** - Simplified component diagram showing the core POC analyzer architecture without legacy components. Perfect for understanding the system at a glance.
+
+### Detailed Architecture
+- **[Detail_04_Benchmark_Analysis_Architecture.puml](presentation/Detail_04_Benchmark_Analysis_Architecture.puml)** - Complete class diagram with all components, data models, and relationships (includes legacy analyzer)
+
+### Flow Diagrams
+- **[Detail_04b_Benchmark_Analysis_Flow.puml](presentation/Detail_04b_Benchmark_Analysis_Flow.puml)** - Detailed sequence diagram showing the interaction flow between analyzer components from loading to report generation
+- **[Benchmark_Sequence_BRISE_High_Level_Flow.png](benchmark_workflow/Benchmark_Sequence_BRISE_High_Level_Flow.png)** - High-level benchmark execution flow

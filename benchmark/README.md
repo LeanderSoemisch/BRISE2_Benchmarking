@@ -1,17 +1,21 @@
 # Benchmark
- 
+
 Service for running benchmark tests and performing a comparative analysis of experiment results.
 Designed for understanding, interpreting and assessment of the experiments' results.
 
 ---
-### Requirements
+
+## Requirements
+
 To use `benchmark` mode:
- - Run [main-node](../main_node/README.md "Main node Readme."), at least one [worker](../worker/README.md), [worker-service](../worker_service/README.md "Worker service Readme."), [event-service](../event_service/README.md). The easiest way to do so is by using the next `../brise.sh` command:  
-    `../brise.sh up -m docker-compose -s main-node worker worker_service event_service`
- - Define the Domain Name for the `event-service` on the host-machine as IP of a machine where the event service is running. In case of running on the same machine set it the same as `localhost` in your environment.
- - NOTE: The benchmark looking for `event-service` on the 49153 port. For that reason be careful with changing AMQP port by using `../brise.sh`.
-___
-### Usage
+- Run [main-node](../main_node/README.md "Main node Readme."), at least one [worker](../worker/README.md), [worker-service](../worker_service/README.md "Worker service Readme."), [event-service](../event_service/README.md). The easiest way to do so is by using the next `../brise.sh` command:  
+  `../brise.sh up -m docker-compose -s main-node worker worker_service event_service`
+- Define the Domain Name for the `event-service` on the host-machine as IP of a machine where the event service is running. In case of running on the same machine set it the same as `localhost` in your environment.
+- NOTE: The benchmark looking for `event-service` on the 49153 port. For that reason be careful with changing AMQP port by using `../brise.sh`.
+
+---
+
+## Usage
 __We strongly recommend to execute and control benchmark tests and analysis only in a dockerized way using provided `./init.sh` control script.__
 
 ##### Configure benchmark using Waffle (recommended)
@@ -61,16 +65,6 @@ This removes:
 - All HTML reports from `./results/`
 - All ZIP archives from `./results/`
 
-You can also use the Python orchestrator directly:
-```bash
-python3 orchestrate_benchmark.py --mode cleanup
-```
-
-Or include cleanup automatically after each benchmark run:
-```bash
-python3 orchestrate_benchmark.py --cleanup
-```
-
 ##### Exporting Plots as SVG
 
 The generated HTML report includes "Export as SVG" buttons for each plot. Simply:
@@ -80,6 +74,72 @@ The generated HTML report includes "Export as SVG" buttons for each plot. Simply
 4. The SVG file will be downloaded to your default downloads folder
 
 This allows you to use high-quality vector graphics in presentations and publications.
+
+---
+
+## Architecture Overview
+
+### Current Components
+
+The benchmark system is built with a modular, pipeline-based architecture:
+
+#### Orchestration Layer
+- **`orchestrate_benchmark.py`** (Main entry point)
+  - Provides `run_benchmark()`, `analyze()` and high-level `orchestrate()` combining both
+  - CLI: `--mode benchmark|analyse|cleanup`, optional `--skip-analyzer` and `--cleanup` flags
+  - Responsible for life-cycle scenario execution and analyzer run
+  - Now includes integrated analyzer initialization
+
+#### Benchmark Execution
+- **`benchmark_runner.py`**
+  - `BRISEBenchmarkRunner` encapsulates benchmark scenarios and interaction with Main Node via `MainAPIClient`
+  - Scenario examples: `benchmark_test()`, `fill_db()`
+  - Produces `.pkl` experiment dumps under `./results/serialized/`
+
+#### Analysis Pipeline (Refactored Modular Architecture)
+The analyzer follows a clean pipeline architecture with separated concerns:
+
+- **`analyzer/config/`** - Configuration Management
+  - `benchmark_config.py`: Configuration data classes and JSON parsing
+
+- **`analyzer/data_pipeline/`** - Data Processing Pipeline
+  - `experiment_loader.py`: Load experiment dumps from disk
+  - `experiment_parser.py`: Parse and validate experiment data
+  - `metric_extractor.py`: Auto-discover objectives (Y1..YN), extract per-iteration series
+  - `data_processor.py`: Normalize and transform data (minimize/maximize, normalization methods)
+
+- **`analyzer/visualization/`** - Report Generation
+  - `plot_generator.py`: Generate improvement and time plots with robust axis scaling
+  - `table_generator.py`: Generate summary tables and statistics
+  - `report_generator.py`: Build multi-tab HTML reports with embedded plots
+
+- **`analyzer/orchestration/`** - High-Level Coordination
+  - `benchmark_analyzer.py`: Main analyzer orchestrator coordinating the entire pipeline
+
+#### Key Features
+- **Multi-objective auto-discovery**: Automatically detects numeric objectives in results
+- **Direction-aware improvement**: Supports both minimize and maximize optimization
+- **Flexible normalization**: Multiple normalization methods (min-over-experiments, etc.)
+- **Robust visualization**: Quantile-based axis scaling, best-so-far computation
+- **Clean separation**: Each component has a single, well-defined responsibility
+
+#### Configuration
+- **`configs/benchmark_templates/`** - JSON configuration templates
+  - Analyzer configuration: results folder, improvement objectives, direction, normalization method, time metrics
+- **`configs/benchmark_feature_model/benchmark_feature_model.wfl`** 
+  - Waffle feature model for configuration wizard
+
+### Architecture Diagrams
+
+#### Waffle Benchmark Schema
+![Benchmark Feature Model](docs/feature_model/Attributed_Waffle_Benchmark_Feature_Model.png)
+
+#### Detailed Architecture References
+For detailed architecture documentation, see:
+- **[Architecture Overview](docs/class_diagram/Benchmark_Class_Diagram_Overview.png)** - Simplified component diagram showing the core architecture
+- **[Benchmark_Sequence_BRISE_High_Level_Flow.png](docs/benchmark_workflow/Benchmark_Sequence_BRISE_High_Level_Flow.png)** - High-level benchmark execution flow
+
+---
 
 ## Configuration File Structure
 
@@ -168,47 +228,88 @@ The general idea of writing benchmark scenario - automation of Experiment Descri
     checks if Experiment Dump(s) with this hash is(are) already in a storage. If you change base Experiment Description content
     between benchmarking it will not work.
 
-##### ~~Run analysis~~ Not available in 2.6.0
-1. Put Experiment dumps in folder `./results/serialized/` (if not exists - create it).
-2. Build an image, create container and run the analysis by calling `./init.sh up analyse`:
-3. Use the browser to open the reports files. Reports files are stored in `./results/reports` directory.
-NOTE: By default the build_detailed_report() method provided in `BRISEBenchmarkAnalyser`, but you could add your own analyser.
-___
-### Structure
-- `./init.sh` provides control commands. For more information `./init.sh help`
-- `./orchestrate_benchmark.py` is the logical entry point. Used to perform actual benchmark tests or for result analysis: in this case it combines a template with actual figures and generates a report file.
-- `./benchmark_runner.py` - module with functionality for running benchmark tests.
-- ~~`./benchmark_analyser.py` - module with functionality to perform benchmark results analysis.~~ is not available in 2.6.0
-- `./shared_tools.py` - storage with helper tools.
+##### Run analysis standalone
+You can run analysis on previously generated experiment dumps without running benchmarks:
 
-###### Benchmark part
-The benchmark part realized in two logical entities `MainAPIClient` and `BRISEBenchmarkRunner` located in `benchmark/benchmark_runner.py` module.
+1. Ensure experiment dumps are in folder `./results/serialized/`
+2. Run analysis using one of these methods:
+   ```bash
+   # Using init.sh
+   ./init.sh up analyse
+   ```
+3. Generated Reports are on default auto-opened in your browser:
+   - Reports are stored in `./results/reports/` directory
+---
 
-BRISEBenchmarkRunner is a main logical class that constructs Experiment Descriptions according to user defined scenario 
-and executes them with BRISE using an instance of BRISE API client class MainAPIClient.
+## Project Structure
 
-Responsibilities:
-- `BRISEBenchmarkRunner`: Class for building and running benchmarking scenarios.
-During initialization step it also initializes Main node API client (using provided URL address).
-`BRISEBenchmarkRunner` class internally stores the Experiment Description, loaded on class instantiation
-(the `Resources` folder with all available Descriptions will be copied inside of working directory on Container creation).
+#### Analysis Pipeline
+Modular analyzer with clear separation of concerns:
 
-- `MainAPIClient`: Performs communication process with Main node. `BRISEBenchmarkRunner` class relies on main API client class
-`MainAPIClient` (benchmark_runner.py module), the `perform_experiment` method that encapsulates communication logic
-(starts BRISE with provided Experiment Description, waits for the `termination` event and downloads the Experiment dump
-file or terminates execution after timeout).
+```
+analyzer/
+├── config/                    # Configuration management
+│   ├── __init__.py
+│   └── benchmark_config.py    # Config data classes and JSON parsing
+│
+├── data_pipeline/             # Data loading and processing
+│   ├── __init__.py
+│   ├── experiment_loader.py   # Load .pkl dumps from disk
+│   ├── experiment_parser.py   # Parse and validate experiments
+│   ├── metric_extractor.py    # Auto-discover objectives and extract metrics
+│   └── data_processor.py      # Normalize and transform data
+│
+├── visualization/             # Report and plot generation
+│   ├── __init__.py
+│   ├── plot_generator.py      # Generate improvement/time plots
+│   ├── table_generator.py     # Generate summary tables
+│   └── report_generator.py    # Build HTML reports
+│
+└── orchestration/             # High-level coordination
+    ├── __init__.py
+    └── benchmark_analyzer.py  # Main analyzer orchestrator
+```
 
-###### ~~Analysis part~~ Is not available in 2.6.0
-- `./results/serialized` default folder for storing dump of experiments.
-- `./results/reports` output folder for report files
-- `./templates` template for the report file, provides slots for the atomic figures.
-- `./plots` code, generating atomic figures and tables:
-  - Main metrics of the experiment. (`table.py`)
-  - Improvements for the best result on each iteration of the experiment (`improvements.py`)
-  - Statistical distribution for all and average results on each configuration in the experiment. (`box_statistic.py`)
-  - Average results and measurement repeats for experiments. Statistical significance and invariability. Effect of the repeater (`repeat_vs_avg.py`)
-  - Experiments configurations (`exp_config.py`)
-___
-### Play Around with Code
+### Configuration and Templates
+- **`configs/benchmark_templates/`** - JSON configuration templates
+- **`configs/benchmark_feature_model/`** - Waffle feature model for configuration wizard
+- **`template/`** - HTML report templates
+
+### Results and Output
+- **`results/serialized/`** - Experiment dumps (`.pkl` files)
+- **`results/reports/`** - Generated HTML reports and CSV files
+
+### Utilities
+- **`util/shared_tools.py`** - Helper tools for file operations and utilities
+
+### Legacy Components
+- **`util/benchmark_analyser.py`** - Legacy analyzer (deprecated, kept for reference)
+
+---
+
+## Data Flow
+
+1. **Benchmark Execution** (`orchestrate_benchmark.py` → `benchmark_runner.py`)
+   - User defines and instantiates benchmark configuration
+   - User defines scenarios in `BRISEBenchmarkRunner`
+   - Runner generates Experiment Descriptions
+   - `MainAPIClient` executes experiments via Main Node API
+   - Results saved as `.pkl` dumps in `./results/serialized/`
+
+2. **Analysis Pipeline** (`orchestrate_benchmark.py` → `analyzer/`)
+   - `BenchmarkAnalyzer` orchestrates the pipeline:
+     - **Load**: `ExperimentLoader` reads `.pkl` files
+     - **Parse**: `ExperimentParser` validates and structures data
+     - **Extract**: `MetricExtractor` discovers objectives and extracts metrics
+     - **Process**: `DataProcessor` normalizes and transforms data
+     - **Visualize**: 
+       - `PlotGenerator` creates improvement/time plots
+       - `TableGenerator` creates summary statistics
+       - `ReportGenerator` assembles HTML report
+   - Output: HTML report and CSV files in `./results/reports/`
+
+---
+
+## Play Around with Code
 
 Benchmark module currently can be extended and modified with the dependencies listed in the [environment.yml](environment.yml) file.
