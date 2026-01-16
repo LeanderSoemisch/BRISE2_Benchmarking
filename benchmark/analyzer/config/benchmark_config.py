@@ -11,7 +11,7 @@ from enum import Enum
 class PlotType(Enum):
     """Plot type enumeration"""
     IMPROVEMENT = 'improvement_plot'
-    HYPERVOLUME = 'hypervolume_plot'
+    CUSTOM = 'custom_plot'
 
 
 class MetricType(Enum):
@@ -60,9 +60,7 @@ class PlotConfig:
     normalization_strategy: str
     objective_label: str
     objective_scale: str
-
-    def is_hypervolume_plot(self) -> bool:
-        return self.plot_type == PlotType.HYPERVOLUME.value
+    enable_grouping: bool = False
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -135,6 +133,8 @@ class BenchmarkConfig:
         norm_strategy_data = objective_axis.get("NormalizationStrategy", {})
         norm_strategy = BenchmarkConfig._parse_normalization_strategy(norm_strategy_data)
 
+        enable_grouping = plot_data.get("enableGrouping", False)
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -145,7 +145,8 @@ class BenchmarkConfig:
             normalize=objective_axis.get("normalize", True),
             normalization_strategy=norm_strategy,
             objective_label=objective_axis.get("label", "Objective value"),
-            objective_scale=objective_axis.get("scale", ScaleType.LINEAR.value)
+            objective_scale=objective_axis.get("scale", ScaleType.LINEAR.value),
+            enable_grouping=enable_grouping
         )
 
     @staticmethod
@@ -192,10 +193,10 @@ class BenchmarkConfig:
                 )
                 plots.append(plot)
 
-            elif "HypervolumePlot" in plot_type_data:
+            elif "CustomPlot" in plot_type_data:
                 plot = BenchmarkConfig._create_plot_config(
-                    PlotType.HYPERVOLUME.value,
-                    plot_type_data["HypervolumePlot"]
+                    PlotType.CUSTOM.value,
+                    plot_type_data["CustomPlot"]
                 )
                 plots.append(plot)
 

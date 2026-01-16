@@ -4,21 +4,24 @@ import logging
 import os
 import sys
 from pathlib import Path
-
-from runner.benchmark_runner import BRISEBenchmarkRunner
-from logger.default_logger import BRISELogConfigurator
-from util.shared_tools import chown_files_in_dir, cleanup_benchmark_results
-
-# Add main_node to path for unpickling experiment objects
+# Add main_node to path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAIN_NODE_PATH = str(PROJECT_ROOT / 'main_node')
 if MAIN_NODE_PATH not in sys.path:
     sys.path.insert(0, MAIN_NODE_PATH)
 
+from logger.default_logger import BRISELogConfigurator
+from util.shared_tools import chown_files_in_dir, cleanup_benchmark_results
 from analyzer.config import BenchmarkConfig
 from analyzer.orchestration import BenchmarkAnalyzer
 
-BRISELogConfigurator()  # Configuring logging
+# Configure logging with correct path (works in both local and Docker environments)
+logging_config_path = os.path.join(MAIN_NODE_PATH, 'logger', 'logging_config.yaml')
+if not os.path.exists(logging_config_path):
+    # In Docker container, logger is in the same directory as orchestrate_benchmark.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    logging_config_path = os.path.join(script_dir, 'logger', 'logging_config.yaml')
+BRISELogConfigurator(logging_config_path)  # Configuring logging
 
 host_event_service = "event-service"
 port_event_service = 49153
@@ -28,6 +31,7 @@ def run_benchmark():
     """Run the benchmark scenarios and produce dumps under results_storage."""
     # Container creation performs --volume on `./results/` folder. Change wisely results_storage.
     try:
+        from runner.benchmark_runner import BRISEBenchmarkRunner
         runner = BRISEBenchmarkRunner(host_event_service, port_event_service, results_storage)
         try:
             # ---    Add User defined benchmark scenarios execution below  ---#
@@ -48,7 +52,7 @@ def run_benchmark():
 
 
 def analyze(
-    results_storage: str = "./results/serialized/",
+    results_storage: str = results_storage,
     output_html: str = "./results/reports/benchmark_report.html",
     output_csv: str = "./results/reports/benchmark_all_objectives.csv"
 ):
@@ -61,7 +65,7 @@ def analyze(
     """
     try:
         # Check for configuration.json (from Waffle) first, then fall back to benchmark_template.json
-        config_path = "./configuration.json" if os.path.exists("./configuration.json") else "./configs/benchmark_templates/benchmark_template_with_hypervolume.json"
+        config_path = "./configuration.json" if os.path.exists("./configuration.json") else "./configs/benchmark_templates/benchmark_template_with_grouped_testcases.json"
         logging.info(f"Running analyzer on dumps in {results_storage} using config: {config_path}")
 
         with open(config_path, 'r') as f:

@@ -123,9 +123,9 @@ class PlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
-    def create_hypervolume_plot(self, objective: str, experiment_groups: Dict[str, List[Any]], plot_config: PlotConfig,
+    def create_grouped_plot(self, objective: str, experiment_groups: Dict[str, List[Any]], plot_config: PlotConfig,
             extractor: Any) -> Optional[go.Figure]:
-        """Create hypervolume plot showing min/max bands for repetitions"""
+        """Create grouped plot showing min/max bands and mean for test case repetitions"""
         traces = []
         all_values = []
 
@@ -133,12 +133,12 @@ class PlotGenerator:
             color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
             fill_color = self._hex_to_rgba(color, alpha=0.2)
 
-            hv_data = extractor.extract_hypervolume_data(exp_list, objective, plot_config.metric_type)
+            grouped_data = extractor.extract_grouped_data(exp_list, objective, plot_config.metric_type)
 
-            if not hv_data:
+            if not grouped_data:
                 continue
 
-            plot_data = self._prepare_hypervolume_plot_data(hv_data)
+            plot_data = self._prepare_grouped_plot_data(grouped_data)
             if not plot_data:
                 continue
 
@@ -146,22 +146,22 @@ class PlotGenerator:
             all_values.extend([v for v in min_y if v is not None])
             all_values.extend([v for v in max_y if v is not None])
 
-            group_traces = self._create_hypervolume_traces(x_vals, min_y, max_y, mean_y, group_name, color, fill_color)
+            group_traces = self._create_grouped_traces(x_vals, min_y, max_y, mean_y, group_name, color, fill_color)
             traces.extend(group_traces)
 
         if not traces:
             return None
 
-        layout = self._create_hypervolume_layout(objective, plot_config, all_values)
+        layout = self._create_grouped_layout(objective, plot_config, all_values)
         return go.Figure(data=traces, layout=layout)
 
     @staticmethod
-    def _prepare_hypervolume_plot_data(hv_data: Dict[str, Any]) -> Optional[Tuple[List, List, List, List]]:
-        """Prepare and filter hypervolume data for plotting"""
-        metric_vals = hv_data['metric_values']
-        min_vals = hv_data['min_values']
-        max_vals = hv_data['max_values']
-        mean_vals = hv_data['mean_values']
+    def _prepare_grouped_plot_data(grouped_data: Dict[str, Any]) -> Optional[Tuple[List, List, List, List]]:
+        """Prepare and filter grouped data for plotting"""
+        metric_vals = grouped_data['metric_values']
+        min_vals = grouped_data['min_values']
+        max_vals = grouped_data['max_values']
+        mean_vals = grouped_data['mean_values']
 
         valid_indices = [i for i in range(len(metric_vals)) if
             metric_vals[i] is not None and min_vals[i] is not None and max_vals[i] is not None]
@@ -181,9 +181,9 @@ class PlotGenerator:
         return x_vals, min_y_best, max_y_best, mean_y_best
 
     @staticmethod
-    def _create_hypervolume_traces(x_vals: List, min_y: List, max_y: List, mean_y: List, group_name: str, color: str,
+    def _create_grouped_traces(x_vals: List, min_y: List, max_y: List, mean_y: List, group_name: str, color: str,
             fill_color: str) -> List[go.Scatter]:
-        """Create traces for min-max band and mean line"""
+        """Create traces for min-max band and mean line in grouped plots"""
         traces = []
 
         traces.append(
@@ -200,10 +200,10 @@ class PlotGenerator:
 
         return traces
 
-    def _create_hypervolume_layout(self, objective: str, plot_config: PlotConfig, all_values: List[float]) -> Dict[
+    def _create_grouped_layout(self, objective: str, plot_config: PlotConfig, all_values: List[float]) -> Dict[
         str, Any]:
-        """Create layout for hypervolume plot"""
-        layout = dict(title=f'{objective} - Hypervolume ({plot_config.metric_description})',
+        """Create layout for grouped plot"""
+        layout = dict(title=f'{objective} - Grouped Test Cases ({plot_config.metric_description})',
             xaxis=dict(title=plot_config.metric_label), yaxis=dict(title=plot_config.objective_label))
 
         self._apply_axis_config(layout, plot_config)

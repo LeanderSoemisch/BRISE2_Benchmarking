@@ -33,6 +33,7 @@
             "PlotType": {
                 "ImprovementPlot": {
                     "Type": "improvement_plot",
+                    "enableGrouping": false,
                     "MetricAxis": {
                         "metricDescription": "iterations completed",
                         "label": "iteration",
@@ -62,6 +63,7 @@
             "PlotType": {
                 "ImprovementPlot": {
                     "Type": "improvement_plot",
+                    "enableGrouping": false,
                     "MetricAxis": {
                         "metricDescription": "time",
                         "label": "Computation time (s)",

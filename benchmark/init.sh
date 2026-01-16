@@ -232,6 +232,18 @@ show_report(){
     fi
 }
 
+analyse(){
+    log "Running analysis pipeline on existing experiment dumps..."
+    python3 orchestrate_benchmark.py --mode analyse
+    if [ $? -eq 0 ]; then
+        log "Analysis completed successfully!"
+        show_report
+    else
+        error "Analysis failed. Check the logs above for details."
+    fi
+}
+
+
 cleanup(){
     log "Cleaning up generated benchmark files..."
 

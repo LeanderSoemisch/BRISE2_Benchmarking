@@ -67,8 +67,8 @@ class BenchmarkAnalyzer:
                 if not plot_config.should_plot_objective(objective):
                     continue
 
-                if plot_config.is_hypervolume_plot():
-                    fig = self._create_hypervolume_plot(experiment_groups, objective, plot_config)
+                if plot_config.enable_grouping:
+                    fig = self._create_grouped_plot(experiment_groups, objective, plot_config)
                 else:
                     fig = self._create_improvement_plot(experiments, objective, plot_config)
 
@@ -80,9 +80,9 @@ class BenchmarkAnalyzer:
 
         return objective_plots
 
-    def _create_hypervolume_plot(self, experiment_groups: Dict[str, List[Any]], objective: str, plot_config: Any) -> \
+    def _create_grouped_plot(self, experiment_groups: Dict[str, List[Any]], objective: str, plot_config: Any) -> \
             Optional[go.Figure]:
-        return self.plotter.create_hypervolume_plot(objective, experiment_groups, plot_config, self.extractor)
+        return self.plotter.create_grouped_plot(objective, experiment_groups, plot_config, self.extractor)
 
     def _create_improvement_plot(self, experiments: List[Any], objective: str, plot_config: Any) -> Optional[go.Figure]:
         names, data_series, time_series = self._extract_plot_data(experiments, objective, plot_config)

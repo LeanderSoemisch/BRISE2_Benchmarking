@@ -69,9 +69,9 @@ class MetricExtractor:
             return None
 
     @staticmethod
-    def extract_hypervolume_data(experiments: List[Any], objective: str,
+    def extract_grouped_data(experiments: List[Any], objective: str,
             metric_type: str = MetricType.ITERATION.value) -> Dict[str, Any]:
-        """Extract min/max/mean objective values across repetitions
+        """Extract min/max/mean objective values across grouped test case repetitions
 
         Returns:
             Dict with min_values, max_values, mean_values, and metric_values
