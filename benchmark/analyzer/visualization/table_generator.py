@@ -12,27 +12,56 @@ class TableGenerator:
         'configuration_strategy': 'ConfigurationStrategy', 'stop_condition': 'StopCondition', 'test_case': 'TestCase',
         'experiment': 'Experiment', 'objective': 'Objective', 'iterations': 'Iterations', 'initial_value': 'Initial',
         'final_best_value': 'Final best', 'improvement_percentage': 'Improvement %',
-        'improvement_absolute': 'Absolute improvement', 'runtime': 'Runtime (s)'}
+        'improvement_absolute': 'Absolute improvement', 'runtime': 'Runtime (s)',
+        'regret_final': 'Regret (final)', 'normalized_improvement': 'Norm. Improvement',
+        'speedup_vs_random': 'Speedup vs Random', 'speedup_vs_grid': 'Speedup vs Grid',
+        'performance_ratio': 'Performance Ratio'}
 
     PREFERRED_COLUMN_ORDER = ['Task', 'Model', 'Sampler', 'ConfigurationStrategy', 'StopCondition', 'TestCase',
         'Experiment', 'Objective', 'Iterations', 'Initial', 'Final best', 'Absolute improvement', 'Improvement %',
-        'Runtime (s)']
+        'Runtime (s)', 'Regret (final)', 'Norm. Improvement', 'Speedup vs Random', 'Speedup vs Grid']
 
     def __init__(self, parser: ExperimentParser, extractor: MetricExtractor):
         self.parser = parser
         self.extractor = extractor
 
-    def create_table(self, experiments: List[Any], objective: str, table_config: TableConfig) -> List[Dict[str, Any]]:
-        """Build summary table for a specific objective"""
+    def create_table(self, experiments: List[Any], objective: str, table_config: TableConfig,
+                     comparative_data: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        """
+        Build summary table for a specific objective.
+
+        Args:
+            experiments: List of experiments
+            objective: Objective name
+            table_config: Table configuration
+            comparative_data: Optional dict mapping experiment names to comparative metrics
+
+        Returns:
+            List of table rows
+        """
         rows = []
         for exp in experiments:
-            row = self._build_experiment_row(exp, objective, table_config)
+            exp_name = self.parser.get_name(exp)
+            comp_data = comparative_data.get(exp_name) if comparative_data else None
+            row = self._build_experiment_row(exp, objective, table_config, comp_data)
             if row:
                 rows.append(row)
         return rows
 
-    def _build_experiment_row(self, exp: Any, objective: str, table_config: TableConfig) -> Optional[Dict[str, Any]]:
-        """Build table row for single experiment"""
+    def _build_experiment_row(self, exp: Any, objective: str, table_config: TableConfig,
+                             comparative_data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Build table row for single experiment.
+
+        Args:
+            exp: Experiment data
+            objective: Objective name
+            table_config: Table configuration
+            comparative_data: Optional comparative metrics for this experiment
+
+        Returns:
+            Dictionary representing a table row
+        """
         values = self.extractor.extract_objective_series(exp, objective)
         if not values:
             return None
@@ -47,12 +76,43 @@ class TableGenerator:
         features = self.parser.parse_features(exp_name)
         runtime = self.extractor.extract_runtime(exp)
 
-        return {'Task': features.get('Task'), 'Model': features.get('Model'), 'Sampler': features.get('Sampler'),
+        row = {'Task': features.get('Task'), 'Model': features.get('Model'), 'Sampler': features.get('Sampler'),
             'ConfigurationStrategy': features.get('ConfigurationStrategy'),
             'StopCondition': features.get('StopCondition'), 'TestCase': features.get('TestCase'),
             'Experiment': self.parser.build_display_name(exp_name), 'Objective': objective, 'Iterations': len(values),
             'Initial': initial, 'Final best': final_best, 'Absolute improvement': improvement_abs,
             'Improvement %': round(improvement_pct, 2) if improvement_pct is not None else None, 'Runtime (s)': runtime}
+
+        # Add comparative metrics if available
+        if comparative_data:
+            row['Regret (final)'] = self._format_metric(comparative_data.get('regret_final'))
+            row['Norm. Improvement'] = self._format_percentage(comparative_data.get('normalized_improvement'))
+            row['Speedup vs Random'] = self._format_speedup(comparative_data.get('speedup_vs_random'))
+            row['Speedup vs Grid'] = self._format_speedup(comparative_data.get('speedup_vs_grid'))
+            row['Performance Ratio'] = self._format_metric(comparative_data.get('performance_ratio'))
+
+        return row
+
+    @staticmethod
+    def _format_metric(value: Optional[float], decimals: int = 4) -> Optional[float]:
+        """Format a metric value"""
+        if value is None or not math.isfinite(value):
+            return None
+        return round(value, decimals)
+
+    @staticmethod
+    def _format_percentage(value: Optional[float]) -> Optional[str]:
+        """Format a percentage value"""
+        if value is None or not math.isfinite(value):
+            return None
+        return f"{value * 100:.2f}%"
+
+    @staticmethod
+    def _format_speedup(value: Optional[float]) -> Optional[str]:
+        """Format a speedup value"""
+        if value is None or not math.isfinite(value) or value <= 0:
+            return None
+        return f"{value:.2f}x"
 
     @staticmethod
     def _compute_improvement(initial: Optional[float], final: Optional[float]) -> Tuple[
@@ -77,6 +137,34 @@ class TableGenerator:
         html_parts = ["<table class='summary-table'>", self._build_header_row(headers)]
         html_parts.extend(self._build_data_rows(rows, headers))
         html_parts.append("</table>")
+
+        return ''.join(html_parts)
+
+    def format_comparative_table(self, rows: List[Dict[str, Any]]) -> str:
+        """Format comparative metrics table rows as HTML.
+
+        Uses a preferred column order for presentation; any remaining columns
+        are appended in sorted order.
+        """
+        if not rows:
+            return ""
+
+        preferred_order = [
+            'Experiment', 'Baseline', 'Norm. Improvement', 'Speedup Factor',
+            'Converged at Iter', 'Experiment Best', 'Baseline Best', 'Final Regret',
+            'NI (Objective)', 'NI (Time)', 'NI (Iterations)',
+        ]
+        all_keys: set = set().union(*(row.keys() for row in rows))
+        headers = [h for h in preferred_order if h in all_keys]
+        headers += sorted(k for k in all_keys if k not in headers)
+
+        html_parts = [
+            "<div class='table-wrapper'>",
+            "<table class='summary-table'>",
+            self._build_header_row(headers),
+        ]
+        html_parts.extend(self._build_data_rows(rows, headers))
+        html_parts += ["</table>", "</div>"]
 
         return ''.join(html_parts)
 

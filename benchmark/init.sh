@@ -42,6 +42,7 @@ help() {
   echo "   > waffle - Start Waffle configuration wizard (accessible at http://localhost:8001/wizard/initialize/)."
   echo "   > show_report - Open the latest benchmark report (benchmark_report.html) in your browser."
   echo "   > cleanup - Remove all generated benchmark files (.pkl, .csv, .html, .zip)."
+  echo "   > cleanup_report - Remove generated reports and baseline selection."
   echo "   > help - Display this help message."
   echo -e -n "$NORMAL"
   echo "-----------------------------------------------------------------------"
@@ -275,6 +276,36 @@ cleanup(){
         log "No generated files found to clean up."
     else
         log "Cleanup completed: $cleaned_count file(s) removed."
+    fi
+}
+
+cleanup_report(){
+    log "Cleaning up generated reports and baseline selection..."
+
+    local cleaned_count=0
+
+    # Remove reports directory
+    if [ -d ./results/reports ]; then
+        local report_count=$(find ./results/reports -type f 2>/dev/null | wc -l)
+        if [ "$report_count" -gt 0 ]; then
+            rm -rf ./results/reports
+            cleaned_count=$((cleaned_count + report_count))
+            log "Removed reports directory with $report_count file(s)"
+            mkdir -p ./results/reports
+        fi
+    fi
+
+    # Remove baseline selection file
+    if [ -f ./results/baseline_selection.json ]; then
+        rm -f ./results/baseline_selection.json
+        cleaned_count=$((cleaned_count + 1))
+        log "Removed baseline selection configuration"
+    fi
+
+    if [ "$cleaned_count" -eq 0 ]; then
+        log "No reports or baseline selection found to clean up."
+    else
+        log "Cleanup completed: $cleaned_count item(s) removed."
     fi
 }
 

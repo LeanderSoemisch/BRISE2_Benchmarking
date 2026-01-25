@@ -21,11 +21,11 @@ class TemplateLoader:
             templates_dir: Directory containing report. Defaults to template/report/
         """
         if templates_dir is None:
-            # Default to the report directory relative to this file
             current_dir = Path(__file__).parent
             templates_dir = current_dir / 'report'
 
         self.templates_dir = Path(templates_dir)
+        self.template_root = Path(__file__).parent
         self.assets_dir = self.templates_dir / 'assets'
 
     def load_template(self, template_name: str) -> str:
@@ -173,3 +173,25 @@ class TemplateLoader:
         # Render template with context
         return template.format(**context)
 
+    def render_jinja_template(self, template_name: str, context: Dict[str, Any]) -> str:
+        """
+        Render a Jinja2 template with context variables.
+
+        Args:
+            template_name: Name of the template file
+            context: Dictionary of variables to substitute in template
+
+        Returns:
+            Rendered HTML content
+        """
+        try:
+            from jinja2 import Template
+        except ImportError:
+            raise ImportError("Jinja2 is required for rendering baseline selection templates. Install with: pip install jinja2")
+
+        template_path = self.template_root / template_name
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_content = f.read()
+
+        template = Template(template_content)
+        return template.render(**context)

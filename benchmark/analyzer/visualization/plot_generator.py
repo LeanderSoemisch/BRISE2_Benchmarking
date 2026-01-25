@@ -5,46 +5,38 @@ import plotly.graph_objs as go
 
 from analyzer.config import Constants, ScaleType
 from analyzer.config.benchmark_config import PlotConfig
-from analyzer.data_pipeline import DataProcessor
+from analyzer.data_pipeline import DataProcessor, ExperimentParser
 
 
 class PlotGenerator:
     """Generates Plotly figures for benchmark results"""
 
+    _parser = ExperimentParser()
+
     @staticmethod
     def _compute_robust_y_range(values: List[float]) -> Optional[List[float]]:
-        """Compute robust y-axis range with 5% padding"""
         finite_vals = np.array([v for v in values if v is not None and np.isfinite(v)])
-
         if finite_vals.size == 0:
             return None
 
-        min_y = float(np.min(finite_vals))
-        max_y = float(np.max(finite_vals))
-
+        min_y, max_y = float(np.min(finite_vals)), float(np.max(finite_vals))
         if not np.isfinite(min_y) or not np.isfinite(max_y):
             return None
 
         if max_y == min_y:
             pad = 0.05 * (abs(min_y) if min_y != 0 else 1.0)
-            return [min_y - pad, max_y + pad]
-
-        pad = 0.05 * (max_y - min_y)
+        else:
+            pad = 0.05 * (max_y - min_y)
         return [min_y - pad, max_y + pad]
 
     @staticmethod
     def _hex_to_rgba(hex_color: str, alpha: float = 0.2) -> str:
-        """Convert hex color to rgba with specified alpha"""
         hex_color = hex_color.lstrip('#')
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
+        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
         return f'rgba({r}, {g}, {b}, {alpha})'
 
     @staticmethod
-    def _create_scatter_trace(x_vals: List[Any], y_vals: List[Any], name: str,
-            single_point: bool = False) -> go.Scatter:
-        """Create a scatter trace with appropriate mode"""
+    def _create_scatter_trace(x_vals: List[Any], y_vals: List[Any], name: str, single_point: bool = False) -> go.Scatter:
         mode = 'markers' if single_point else 'lines+markers'
         trace = go.Scatter(x=x_vals, y=y_vals, mode=mode, name=name)
         if single_point:
@@ -53,14 +45,59 @@ class PlotGenerator:
 
     @staticmethod
     def _apply_axis_config(layout: Dict[str, Any], plot_config: PlotConfig):
-        """Apply axis scale configuration to layout"""
         if plot_config.metric_scale == ScaleType.LOG10.value:
             layout['xaxis']['type'] = 'log'
         if plot_config.objective_scale == ScaleType.LOG10.value:
             layout['yaxis']['type'] = 'log'
 
+    @staticmethod
+    def _create_baseline_traces(baselines: Dict[str, Any], objective: str) -> Tuple[List[go.Scatter], List[float]]:
+        """Create baseline traces for plotting with appropriate styling"""
+        traces = []
+        all_values = []
+        baseline_colors = ['#888888', '#2d2d2d', '#d62728', '#ff7f0e', '#9467bd']
+        baseline_dashes = ['dash', 'dot', 'dashdot']
+
+        for idx, (baseline_key, baseline_result) in enumerate(baselines.items()):
+            color = baseline_colors[idx % len(baseline_colors)]
+            dash = baseline_dashes[idx % len(baseline_dashes)]
+
+            display_name = f"{ExperimentParser().build_display_name(baseline_key)} Baseline"
+
+            trajectory = None
+            if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
+                if not all(v == float('inf') for v in baseline_result.trajectory):
+                    trajectory = baseline_result.trajectory
+
+            if not trajectory and hasattr(baseline_result, 'raw_experiment'):
+                exp = baseline_result.raw_experiment
+                measured_configs = getattr(exp, 'measured_configurations', [])
+                if measured_configs:
+                    trajectory = []
+                    current_best = float('inf')
+                    for config in measured_configs:
+                        results = getattr(config, 'averaged_result', None) or getattr(config, 'results', {})
+                        if results:
+                            value = results.get(objective)
+                            if value is None and hasattr(results, 'keys'):
+                                value = results[list(results.keys())[0]]
+                            if value is not None:
+                                current_best = min(current_best, value)
+                                trajectory.append(current_best)
+
+            if trajectory:
+                x_vals = list(range(len(trajectory)))
+                all_values.extend([v for v in trajectory if v is not None and np.isfinite(v)])
+                traces.append(go.Scatter(
+                    x=x_vals, y=trajectory, mode='lines', name=display_name,
+                    line=dict(color=color, dash=dash, width=2.5),
+                    hovertemplate='%{x}, %{y:.4f}<extra></extra>'
+                ))
+
+        return traces, all_values
+
     def create_improvement_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
-            plot_config: PlotConfig) -> go.Figure:
+            plot_config: PlotConfig, baselines: Dict[str, Any] = None) -> go.Figure:
         traces = []
         all_values = []
         max_iterations = 0
@@ -72,15 +109,25 @@ class PlotGenerator:
             best_series = DataProcessor.compute_best_so_far(series)
             all_values.extend([v for v in best_series if v is not None])
 
-            trace = self._create_scatter_trace(x_vals, best_series, f"{name} best", len(series) <= 1)
+            trace = self._create_scatter_trace(x_vals, best_series, name, len(series) <= 1)
             traces.append(trace)
+
+        if baselines:
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
+            traces.extend(baseline_traces)
+            all_values.extend(baseline_values)
+            for baseline_result in baselines.values():
+                if hasattr(baseline_result, 'trajectory'):
+                    max_iterations = max(max_iterations, len(baseline_result.trajectory))
 
         x_range = [-0.5, max_iterations - 0.5 if max_iterations > 1 else 0.5]
         y_range = self._compute_robust_y_range(all_values)
 
-        layout = dict(title=f'{objective} - {plot_config.metric_description}',
-            xaxis=dict(title=plot_config.metric_label, range=x_range), yaxis=dict(title=plot_config.objective_label))
-
+        layout = dict(
+            title=f'{objective} - {plot_config.metric_description}',
+            xaxis=dict(title=plot_config.metric_label, range=x_range),
+            yaxis=dict(title=plot_config.objective_label)
+        )
         if y_range:
             layout['yaxis']['range'] = y_range
 
@@ -88,16 +135,15 @@ class PlotGenerator:
         return go.Figure(data=traces, layout=layout)
 
     def create_custom_plot(self, objective: str, experiment_names: List[str], objective_series: List[List[float]],
-            time_series: List[List[Optional[float]]], plot_config: PlotConfig) -> Optional[go.Figure]:
+            time_series: List[List[Optional[float]]], plot_config: PlotConfig, baselines: Dict[str, Any] = None) -> Optional[go.Figure]:
         traces = []
         all_time = []
         all_objective = []
 
         for obj_vals, time_vals, name in zip(objective_series, time_series, experiment_names):
             best_series = DataProcessor.compute_best_so_far(obj_vals)
-
-            valid_pairs = [(time_vals[i], best_series[i]) for i in range(min(len(best_series), len(time_vals))) if
-                           best_series[i] is not None and time_vals[i] is not None]
+            valid_pairs = [(time_vals[i], best_series[i]) for i in range(min(len(best_series), len(time_vals)))
+                           if best_series[i] is not None and time_vals[i] is not None]
 
             if not valid_pairs:
                 continue
@@ -106,15 +152,22 @@ class PlotGenerator:
             all_time.extend(x_vals)
             all_objective.extend(y_vals)
 
-            trace = self._create_scatter_trace(x_vals, y_vals, f"{name} best", len(valid_pairs) <= 1)
+            trace = self._create_scatter_trace(x_vals, y_vals, name, len(valid_pairs) <= 1)
             traces.append(trace)
+
+        if baselines:
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
+            traces.extend(baseline_traces)
+            all_objective.extend(baseline_values)
 
         if not traces:
             return None
 
-        layout = dict(title=f'{objective} - {plot_config.metric_description}',
-            xaxis=dict(title=plot_config.metric_label), yaxis=dict(title=plot_config.objective_label))
-
+        layout = dict(
+            title=f'{objective} - {plot_config.metric_description}',
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label)
+        )
         self._apply_axis_config(layout, plot_config)
 
         y_range = self._compute_robust_y_range(all_objective)
@@ -124,8 +177,11 @@ class PlotGenerator:
         return go.Figure(data=traces, layout=layout)
 
     def create_grouped_plot(self, objective: str, experiment_groups: Dict[str, List[Any]], plot_config: PlotConfig,
-            extractor: Any) -> Optional[go.Figure]:
+            extractor: Any, baselines: Dict[str, Any] = None) -> Optional[go.Figure]:
         """Create grouped plot showing min/max bands and mean for test case repetitions"""
+        if plot_config.plot_type == 'box_plot':
+            return self._create_grouped_box_plot(objective, experiment_groups, plot_config, extractor, baselines)
+
         traces = []
         all_values = []
 
@@ -134,7 +190,6 @@ class PlotGenerator:
             fill_color = self._hex_to_rgba(color, alpha=0.2)
 
             grouped_data = extractor.extract_grouped_data(exp_list, objective, plot_config.metric_type)
-
             if not grouped_data:
                 continue
 
@@ -146,8 +201,12 @@ class PlotGenerator:
             all_values.extend([v for v in min_y if v is not None])
             all_values.extend([v for v in max_y if v is not None])
 
-            group_traces = self._create_grouped_traces(x_vals, min_y, max_y, mean_y, group_name, color, fill_color)
-            traces.extend(group_traces)
+            traces.extend(self._create_grouped_traces(x_vals, min_y, max_y, mean_y, group_name, color, fill_color))
+
+        if baselines:
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
+            traces.extend(baseline_traces)
+            all_values.extend(baseline_values)
 
         if not traces:
             return None
@@ -157,59 +216,145 @@ class PlotGenerator:
 
     @staticmethod
     def _prepare_grouped_plot_data(grouped_data: Dict[str, Any]) -> Optional[Tuple[List, List, List, List]]:
-        """Prepare and filter grouped data for plotting"""
         metric_vals = grouped_data['metric_values']
         min_vals = grouped_data['min_values']
         max_vals = grouped_data['max_values']
         mean_vals = grouped_data['mean_values']
 
-        valid_indices = [i for i in range(len(metric_vals)) if
-            metric_vals[i] is not None and min_vals[i] is not None and max_vals[i] is not None]
+        valid_indices = [i for i in range(len(metric_vals))
+            if metric_vals[i] is not None and min_vals[i] is not None and max_vals[i] is not None]
 
         if not valid_indices:
             return None
 
         x_vals = [metric_vals[i] for i in valid_indices]
-        min_y = [min_vals[i] for i in valid_indices]
-        max_y = [max_vals[i] for i in valid_indices]
-        mean_y = [mean_vals[i] for i in valid_indices]
+        min_y = DataProcessor.compute_best_so_far([min_vals[i] for i in valid_indices])
+        max_y = DataProcessor.compute_best_so_far([max_vals[i] for i in valid_indices])
+        mean_y = DataProcessor.compute_best_so_far([mean_vals[i] for i in valid_indices])
 
-        min_y_best = DataProcessor.compute_best_so_far(min_y)
-        max_y_best = DataProcessor.compute_best_so_far(max_y)
-        mean_y_best = DataProcessor.compute_best_so_far(mean_y)
-
-        return x_vals, min_y_best, max_y_best, mean_y_best
+        return x_vals, min_y, max_y, mean_y
 
     @staticmethod
     def _create_grouped_traces(x_vals: List, min_y: List, max_y: List, mean_y: List, group_name: str, color: str,
             fill_color: str) -> List[go.Scatter]:
-        """Create traces for min-max band and mean line in grouped plots"""
-        traces = []
-
-        traces.append(
-            go.Scatter(x=x_vals, y=max_y, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip',
-                legendgroup=group_name))
-
-        traces.append(
+        return [
+            go.Scatter(x=x_vals, y=max_y, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip', legendgroup=group_name),
             go.Scatter(x=x_vals, y=min_y, mode='lines', line=dict(width=0), fill='tonexty', fillcolor=fill_color,
-                name=f'{group_name} (min-max)', hovertemplate='%{x}, %{y:.4f}<extra></extra>', legendgroup=group_name))
-
-        traces.append(
+                name=f'{group_name} (min-max)', hovertemplate='%{x}, %{y:.4f}<extra></extra>', legendgroup=group_name),
             go.Scatter(x=x_vals, y=mean_y, mode='lines+markers', name=f'{group_name} (mean)', line=dict(color=color),
-                marker=dict(color=color), hovertemplate='%{x}, %{y:.4f}<extra></extra>', legendgroup=group_name))
+                marker=dict(color=color), hovertemplate='%{x}, %{y:.4f}<extra></extra>', legendgroup=group_name)
+        ]
 
-        return traces
-
-    def _create_grouped_layout(self, objective: str, plot_config: PlotConfig, all_values: List[float]) -> Dict[
-        str, Any]:
-        """Create layout for grouped plot"""
-        layout = dict(title=f'{objective} - Grouped Test Cases ({plot_config.metric_description})',
-            xaxis=dict(title=plot_config.metric_label), yaxis=dict(title=plot_config.objective_label))
-
+    def _create_grouped_layout(self, objective: str, plot_config: PlotConfig, all_values: List[float]) -> Dict[str, Any]:
+        layout = dict(
+            title=f'{objective} - Grouped Test Cases ({plot_config.metric_description})',
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label)
+        )
         self._apply_axis_config(layout, plot_config)
-
         y_range = self._compute_robust_y_range(all_values)
         if y_range:
             layout['yaxis']['range'] = y_range
-
         return layout
+
+    def _create_grouped_box_plot(self, objective: str, experiment_groups: Dict[str, List[Any]],
+                                 plot_config: PlotConfig, extractor: Any,
+                                 baselines: Dict[str, Any] = None) -> Optional[go.Figure]:
+        traces = []
+        all_values = []
+
+        for group_name, exp_list in experiment_groups.items():
+            all_group_values = []
+            for exp in exp_list:
+                trajectory = extractor.extract_objective_series(exp, objective)
+                if trajectory:
+                    valid_values = [v for v in DataProcessor.compute_best_so_far(trajectory) if v is not None and np.isfinite(v)]
+                    all_group_values.extend(valid_values)
+
+            if all_group_values:
+                all_values.extend(all_group_values)
+                traces.append(go.Box(
+                    y=all_group_values, name=group_name, boxmean='sd',
+                    marker=dict(opacity=0.7), hovertemplate='%{y:.4f}<extra></extra>'
+                ))
+
+        if baselines:
+            for baseline_key, baseline_result in baselines.items():
+                trajectory = None
+                if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
+                    if not all(v == float('inf') for v in baseline_result.trajectory):
+                        trajectory = baseline_result.trajectory
+
+                if trajectory:
+                    valid_values = [v for v in DataProcessor.compute_best_so_far(trajectory) if v is not None and np.isfinite(v)]
+                    if valid_values:
+                        all_values.extend(valid_values)
+                        baseline_name = ExperimentParser().build_display_name(baseline_key)
+                        traces.append(go.Box(
+                            y=valid_values, name=f"{baseline_name} Baseline", boxmean='sd',
+                            marker=dict(opacity=0.5, color='gray'), hovertemplate='%{y:.4f}<extra></extra>'
+                        ))
+
+        if not traces:
+            return None
+
+        y_range = self._compute_robust_y_range(all_values)
+        layout = dict(
+            title=f'{objective} - Grouped Distribution Comparison',
+            xaxis=dict(title='Test Case'), yaxis=dict(title=plot_config.objective_label),
+            showlegend=True, boxmode='overlay'
+        )
+        if y_range:
+            layout['yaxis']['range'] = y_range
+
+        self._apply_axis_config(layout, plot_config)
+        return go.Figure(data=traces, layout=layout)
+
+    def create_box_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
+            plot_config: PlotConfig, baselines: Dict[str, Any] = None) -> go.Figure:
+        traces = []
+        all_values = []
+
+        for series, name in zip(data_series, experiment_names):
+            if not series:
+                continue
+            valid_values = [v for v in DataProcessor.compute_best_so_far(series) if v is not None and np.isfinite(v)]
+            if not valid_values:
+                continue
+
+            all_values.extend(valid_values)
+            traces.append(go.Box(
+                y=valid_values, name=name, boxmean='sd',
+                marker=dict(opacity=0.7), hovertemplate='%{y:.4f}<extra></extra>'
+            ))
+
+        if baselines:
+            for baseline_key, baseline_result in baselines.items():
+                trajectory = None
+                if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
+                    if not all(v == float('inf') for v in baseline_result.trajectory):
+                        trajectory = baseline_result.trajectory
+
+                if trajectory:
+                    valid_values = [v for v in DataProcessor.compute_best_so_far(trajectory) if v is not None and np.isfinite(v)]
+                    if valid_values:
+                        all_values.extend(valid_values)
+                        display_name = f"{ExperimentParser().build_display_name(baseline_key)} Baseline"
+                        traces.append(go.Box(
+                            y=valid_values, name=display_name, boxmean='sd',
+                            marker=dict(opacity=0.6, color='#808080'), line=dict(color='#606060'),
+                            hovertemplate='%{y:.4f}<extra></extra>'
+                        ))
+
+        y_range = self._compute_robust_y_range(all_values)
+        layout = dict(
+            title=f'{objective} - Distribution Comparison',
+            xaxis=dict(title='Algorithm'), yaxis=dict(title=plot_config.objective_label),
+            showlegend=True, boxmode='overlay'
+        )
+        if y_range:
+            layout['yaxis']['range'] = y_range
+
+        self._apply_axis_config(layout, plot_config)
+
+        return go.Figure(data=traces, layout=layout)

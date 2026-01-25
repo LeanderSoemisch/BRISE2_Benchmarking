@@ -1,315 +1,616 @@
-# Benchmark
+# BRISE Benchmark Module
 
-Service for running benchmark tests and performing a comparative analysis of experiment results.
-Designed for understanding, interpreting and assessment of the experiments' results.
-
----
-
-## Requirements
-
-To use `benchmark` mode:
-- Run [main-node](../main_node/README.md "Main node Readme."), at least one [worker](../worker/README.md), [worker-service](../worker_service/README.md "Worker service Readme."), [event-service](../event_service/README.md). The easiest way to do so is by using the next `../brise.sh` command:  
-  `../brise.sh up -m docker-compose -s main-node worker worker_service event_service`
-- Define the Domain Name for the `event-service` on the host-machine as IP of a machine where the event service is running. In case of running on the same machine set it the same as `localhost` in your environment.
-- NOTE: The benchmark looking for `event-service` on the 49153 port. For that reason be careful with changing AMQP port by using `../brise.sh`.
+A comprehensive benchmarking and comparative analysis system for optimization algorithms. 
+This module enables automated experiment evaluation, statistical analysis, and interactive visualization of optimization performance.
 
 ---
 
-## Usage
-__We strongly recommend to execute and control benchmark tests and analysis only in a dockerized way using provided `./init.sh` control script.__
+## Table of Contents
 
-##### Configure benchmark using Waffle (recommended)
-1. Start the Waffle configuration wizard:
-   ```bash
-   ./init.sh waffle
-   ```
-   This will:
-   - Start the Waffle service via docker-compose
-   - Open your browser to http://localhost:8001/wizard/initialize/
-   
-2. In the Waffle wizard:
-   - Copy and paste the content of `benchmark_template.wfl` into the text field
-   - Click "Configure product manually"
-   - Fill in the required fields:
-     - `Benchmark.ExperimentSeries.Name`: Name for your experiment series
-     - `Benchmark.ExperimentSeries.Description`: Description of your benchmark
-     - `Benchmark.Resources.Folder`: Path to results folder (e.g., `./results/serialized/`)
-     - ...
-     - Configure plot settings for Improvement and Time plots as needed
-   - Click "Download configured product" to get `configuration.json`
-   
-3. Save the downloaded file as `./benchmark/configuration.json`
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Workflows](#workflows)
+- [Plot Types](#plot-types)
+- [Comparative Analysis](#comparative-analysis)
+- [Advanced Topics](#advanced-topics)
+- [Commands](#commands)
+- [Troubleshooting](#troubleshooting)
 
-4. Run the benchmark and analysis:
-   ```bash
-   ./init.sh up benchmark
-   ```
-   
-   After completion, the results will automatically open in your browser!
-   You can also manually open the report anytime with:
-   ```bash
-   ./init.sh show_report
-   ```
+---
 
-##### Cleaning Up Generated Files
+## Quick Start
 
-After and before running benchmarks, you can clean up all generated files (`.pkl`, `.csv`, `.html`, `.zip`):
+### Prerequisites
+- Docker and docker-compose
+- BRISE services running (main-node, worker, event-service)
+- Python 3.7+ (for local development)
+
+### Run a Complete Benchmark
 
 ```bash
+# 1. Configure using Waffle (recommended)
+./init.sh waffle
+
+# 2. Run benchmark and analysis
+./init.sh up benchmark
+
+# 3. View results (auto-opens in browser)
+./init.sh show_report
+
+# 4. Clean up when done
 ./init.sh cleanup
 ```
 
-This removes:
-- All experiment dumps (`.pkl` files) from `./results/serialized/`
-- All CSV files (benchmark results) from `./results/`
-- All HTML reports from `./results/`
-- All ZIP archives from `./results/`
+### Analysis Only (If execution results already exist)
 
-##### Exporting Plots as SVG
-
-The generated HTML report includes "Export as SVG" buttons for each plot. Simply:
-1. Open the report in your browser (`./init.sh show_report`)
-2. Navigate to the plot you want to export
-3. Click the "Export as SVG" button below the plot
-4. The SVG file will be downloaded to your default downloads folder
-
-This allows you to use high-quality vector graphics in presentations and publications.
+```bash
+# Analyze existing experiment dumps
+./init.sh up analyse
+```
 
 ---
 
-## Architecture Overview
+## Features
 
-### Current Components
+### Core Capabilities
 
-The benchmark system is built with a modular, pipeline-based architecture:
+#### **Multi-Objective Optimization Analysis**
+- Automatic detection of all numeric objectives (Y1, Y2, Y3, ...)
+- Direction-aware analysis (minimize or maximize)
+- Per-objective visualization and metrics
+- Aggregate performance profiles across objectives
 
-#### Orchestration Layer
-- **`orchestrate_benchmark.py`** (Main entry point)
-  - Provides `run_benchmark()`, `analyze()` and high-level `orchestrate()` combining both
-  - CLI: `--mode benchmark|analyse|cleanup`, optional `--skip-analyzer` and `--cleanup` flags
-  - Responsible for life-cycle scenario execution and analyzer run
-  - Now includes integrated analyzer initialization
+#### **Visualization Suite**
+- **Improvement Plots**: Track best-so-far progression over iterations
+- **Time-Based Plots**: Performance evolution over wall-clock time
+- **Box Plots**: Statistical distribution comparison across algorithms
+- **Performance Profiles**: Algorithm ranking across multiple problems
+- **Regret Analysis**: Distance from known optimum over time/iterations
 
-#### Benchmark Execution
-- **`benchmark_runner.py`**
-  - `BRISEBenchmarkRunner` encapsulates benchmark scenarios and interaction with Main Node via `MainAPIClient`
-  - Scenario examples: `benchmark_test()`, `fill_db()`
-  - Produces `.pkl` experiment dumps under `./results/serialized/`
+#### **Comparative Analysis**
+- Interactive baseline selection from executed experiments
+- Normalized improvement metrics (objective value, time, iterations)
+- Performance profiles across multiple test cases
+- Regret analysis (iteration-based and time-based)
+- Statistical distribution comparison via box plots
 
-#### Analysis Pipeline (Refactored Modular Architecture)
-The analyzer follows a clean pipeline architecture with separated concerns:
+#### **Advanced Metrics**
+- **Normalized Improvement**: 
+  - Objective value improvement
+  - Time-to-target speedup
+  - Iteration-to-target speedup
+- **Regret Analysis**:
+  - Iteration-based regret
+  - Time-based regret
+- **Performance Profiles**: Cross-problem algorithm ranking
 
-- **`analyzer/config/`** - Configuration Management
-  - `benchmark_config.py`: Configuration data classes and JSON parsing
-
-- **`analyzer/data_pipeline/`** - Data Processing Pipeline
-  - `experiment_loader.py`: Load experiment dumps from disk
-  - `experiment_parser.py`: Parse and validate experiment data
-  - `metric_extractor.py`: Auto-discover objectives (Y1..YN), extract per-iteration series
-  - `data_processor.py`: Normalize and transform data (minimize/maximize, normalization methods)
-
-- **`analyzer/visualization/`** - Report Generation
-  - `plot_generator.py`: Generate improvement and time plots with robust axis scaling
-  - `table_generator.py`: Generate summary tables and statistics
-  - `report_generator.py`: Build multi-tab HTML reports with embedded plots
-
-- **`analyzer/orchestration/`** - High-Level Coordination
-  - `benchmark_analyzer.py`: Main analyzer orchestrator coordinating the entire pipeline
-
-#### Key Features
-- **Multi-objective auto-discovery**: Automatically detects numeric objectives in results
-- **Direction-aware improvement**: Supports both minimize and maximize optimization
-- **Flexible normalization**: Multiple normalization methods (min-over-experiments, etc.)
-- **Robust visualization**: Quantile-based axis scaling, best-so-far computation
-- **Clean separation**: Each component has a single, well-defined responsibility
-
-#### Configuration
-- **`configs/benchmark_templates/`** - JSON configuration templates
-  - Analyzer configuration: results folder, improvement objectives, direction, normalization method, time metrics
-- **`configs/benchmark_feature_model/benchmark_feature_model.wfl`** 
-  - Waffle feature model for configuration wizard
-
-### Architecture Diagrams
-
-#### Waffle Benchmark Schema
-![Benchmark Feature Model](docs/feature_model/Attributed_Waffle_Benchmark_Feature_Model.png)
-
-#### Detailed Architecture References
-For detailed architecture documentation, see:
-- **[Architecture Overview](docs/class_diagram/Benchmark_Class_Diagram_Overview.png)** - Simplified component diagram showing the core architecture
-- **[Benchmark_Sequence_BRISE_High_Level_Flow.png](docs/benchmark_workflow/Benchmark_Sequence_BRISE_High_Level_Flow.png)** - High-level benchmark execution flow
+#### **Interactive Reports**
+- Multi-tab HTML reports
+- SVG export for all plots
+- Sortable, filterable tables
+- CSV data export
+- Automatic browser preview
 
 ---
 
-## Configuration File Structure
+## Architecture
 
-The downloaded `configuration.json` should have this structure:
+### Module Structure
+
+```
+benchmark/
+├── orchestrate_benchmark.py    # Main entry point
+├── runner/
+│   └── benchmark_runner.py     # Experiment execution engine
+│
+├── analyzer/                   # Analysis pipeline
+│   ├── config/                 # Configuration management
+│   │   └── benchmark_config.py
+│   │
+│   ├── data_pipeline/          # Data processing
+│   │   ├── experiment_loader.py
+│   │   ├── experiment_parser.py
+│   │   ├── metric_extractor.py
+│   │   └── data_processor.py
+│   │
+│   ├── visualization/          # Plot and report generation
+│   │   ├── plot_generator.py
+│   │   ├── table_generator.py
+│   │   └── report_generator.py
+│   │
+│   ├── orchestration/          # High-level coordination
+│   │   ├── benchmark_analyzer.py
+│   │   ├── comparative_integration.py
+│   │   └── comparative_orchestrator.py
+│   │
+│   └── comparison/             # Comparative analysis
+│       ├── README.md           # Detailed comparison docs
+│       ├── baseline_manager.py
+│       ├── comparison_processor.py
+│       ├── comparative_metrics.py
+│       └── ...
+│
+├── configs/                    # Configuration templates
+│   ├── benchmark_templates/
+│   │   ├── benchmark_template.json
+│   │   ├── comparative_benchmark_template.json
+│   │   └── ...
+│   └── benchmark_feature_model/
+│       └── benchmark_feature_model.wfl
+│
+└── results/                    # Output directory
+    ├── serialized/             # Experiment dumps (.pkl)
+    └── reports/                # Generated reports (HTML, CSV, ZIP)
+```
+
+### Component Responsibilities
+
+| Component | Responsibility |
+|-----------|---------------|
+| **orchestrate_benchmark.py** | CLI entry point, workflow coordination |
+| **benchmark_runner.py** | Execute experiments via BRISE API |
+| **experiment_loader.py** | Load .pkl files from disk |
+| **experiment_parser.py** | Validate and structure experiment data |
+| **metric_extractor.py** | Auto-discover objectives, extract trajectories |
+| **data_processor.py** | Normalize, transform, compute best-so-far |
+| **plot_generator.py** | Create all plot types (improvement, box, etc.) |
+| **table_generator.py** | Generate summary statistics tables |
+| **report_generator.py** | Assemble multi-tab HTML reports |
+| **benchmark_analyzer.py** | Orchestrate entire analysis pipeline |
+| **comparison/** | Baseline execution and comparative metrics |
+
+---
+
+## Configuration
+
+### Using Waffle (Recommended)
+
+Waffle provides a visual configuration wizard:
+
+```bash
+./init.sh waffle
+```
+
+Then:
+1. Open http://localhost:8001/wizard/initialize/
+2. Paste `benchmark_feature_model.wfl` content
+3. Click "Configure product manually"
+4. Fill in fields and download `configuration.json`
+5. Save to `benchmark/configuration.json`
+
+### Manual Configuration
+
+See `configs/benchmark_templates/` for examples.
+
+#### Basic Configuration
 
 ```json
 {
   "Benchmark": {
-    "Resources": {
-      "Folder": "./results/serialized/"
+    "Report": {
+      "outputDirectory": "./results/reports/"
     },
-    "ExperimentSeries": {
-      "Name": "MyBenchmark",
-      "Description": "Description of the benchmark"
+    "Experiment": {
+      "name": "My Benchmark",
+      "description": "Optimization algorithm comparison",
+      "objectivesToMeasure": ["Y1", "Y2", "Y3"]
     },
-    "Plots": {
-      "Improvement": {
-        "X": { ... },
-        "Y": { ... }
-      },
-      "Time": {
-        "X": { ... },
-        "Y": { ... }
+    "Table": {
+      "task": true,
+      "model": true,
+      "iterations": true,
+      "finalBestValue": true,
+      "runtime": true
+    },
+    "Plot_0": {
+      "PlotType": {
+        "ImprovementPlot": { ... }
       }
     }
   }
 }
 ```
 
-See `configuration.json.example` for a complete example.
+### Configuration Fields
 
-## Workflow Diagram
+#### Experiment Settings
+- `name`: Benchmark name
+- `description`: Description for reports
+- `objectivesToMeasure`: List of objectives to analyze
+
+#### Plot Settings
+- `PlotType`: One of `ImprovementPlot`, `CustomPlot`, `BoxPlot`
+- `enableGrouping`: Group multiple runs of same test case
+- `normalize`: Apply normalization
+- `objectivesToPlot`: Which objectives to include
+
+#### Baseline Settings
+- `RandomSearchBaseline.samplingSize`: Number of random samples
+- `GridSearchBaseline.gridResolution`: Grid points per dimension
+
+#### Comparative Metrics
+- `RegretAnalysis.regretType`: `["iteration"]`, `["time"]`, or both
+- `NormalizedImprovement.improvementType`: Types of improvement to calculate
+- `PerformanceProfile.objectivesToProfile`: Objectives for profile
+
+---
+
+## Workflows
+
+### 1. Standard Benchmark Workflow
 
 ```
 ┌─────────────────┐
-│  Start Waffle   │
-│ ./init.sh waffle│
+│ Configure       │
+│ (Waffle/Manual) │
 └────────┬────────┘
          │
          ▼
-┌─────────────────────────────┐
-│ Open http://localhost:8001  │
-│  /wizard/initialize/        │
-└────────┬────────────────────┘
+┌─────────────────┐
+│ Run Experiments │
+└────────┬────────┘
          │
          ▼
-┌─────────────────────────────┐
-│ Paste benchmark_template.wfl│
-│ Click "Configure manually"  │
-└────────┬────────────────────┘
+┌─────────────────┐
+│ Generate .pkl   │
+│ dumps           │
+└────────┬────────┘
          │
          ▼
-┌─────────────────────────────┐
-│ Fill in configuration fields│
-│ - Name, Description         │
-│ - Folder paths              │
-│ - Plot settings             │
-└────────┬────────────────────┘
+┌─────────────────┐
+│ Analyze Results │
+│ (analyzer)      │
+└────────┬────────┘
          │
          ▼
-┌─────────────────────────────┐
-│ Download configuration.json │
-│ Save to benchmark/ folder   │
-└────────┬────────────────────┘
-         │
-         ▼
-┌─────────────────────────────┐
-│  Run benchmark analysis     │
-│  ./init.sh up benchmark     │
-└─────────────────────────────┘
+┌─────────────────┐
+│ HTML Report     │
+│ (auto-opens)    │
+└─────────────────┘
 ```
 
-##### Plan and run benchmark tests
-The general idea of writing benchmark scenario - automation of Experiment Description generation and execution.
-1. Write your own benchmarking scenario as a separate method in class `BRISEBenchmarkRunner`.
-    - The atomic step of scenario - you have generated complete valid Experiment Description and
-    called `self.execute_experiment` passing this description as an argument.
-    - You could mark your benchmarking scenario as `@benchmarkable` to calculate the number of Experiments
-    that are going to be performed before their actual execution and check the overall process of Scenarios generation.
-2. Add execution of this scenario in `run_benchmark` function of `orchestrate_benchmark.py` module.
-3. Build an image, create a container and run the benchmark by calling `./init.sh up benchmark`
-    * in case of failure you could restart benchmarking by running `./init.sh restart benchmark`.
-    * benchmark enabled with __warm startup__ feature - in case of restart, the Experiments that were already performed
-    and stored in storage folder will be detected and skipped. Be aware that this feature fully relies on a content of
-    the Experiment Description - benchmarking script calculates hash of Experiment that is going to be executed and
-    checks if Experiment Dump(s) with this hash is(are) already in a storage. If you change base Experiment Description content
-    between benchmarking it will not work.
+### 2. Analysis-Only Workflow
 
-##### Run analysis standalone
-You can run analysis on previously generated experiment dumps without running benchmarks:
+```
+┌─────────────────┐
+│ Existing .pkl   │
+│ files           │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ ./init.sh up    │
+│ analyse         │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ HTML Report     │
+│ (auto-opens)    │
+└─────────────────┘
+```
 
-1. Ensure experiment dumps are in folder `./results/serialized/`
-2. Run analysis using one of these methods:
+### 3. Comparative Benchmark Workflow
+
+```
+┌─────────────────┐
+│ Configure with  │
+│ Baselines       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Run Experiments │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Execute         │
+│ Baselines       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Comparative     │
+│ Analysis        │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Report with     │
+│ Comparisons     │
+└─────────────────┘
+```
+
+---
+
+## Plot Types
+
+### 1. Improvement Plot
+**Purpose**: Track optimization progress over iterations
+
+**Features**:
+- Best-so-far trajectory
+- Multiple algorithms on same plot
+- Baseline overlays (random/grid search)
+- Automatic Y-axis scaling
+
+**Use Case**: See how quickly algorithms converge
+
+**Example**:
+```json
+"Plot_0": {
+  "PlotType": {
+    "ImprovementPlot": {
+      "Type": "improvement_plot",
+      "enableGrouping": false,
+      "MetricAxis": {
+        "metricDescription": "iterations completed",
+        "label": "Iteration",
+        "scale": "linear"
+      },
+      "ObjectiveAxis": {
+        "objectivesToPlot": ["Y1", "Y2"],
+        "normalize": true,
+        "label": "Objective Value"
+      }
+    }
+  }
+}
+```
+
+### 2. Box Plot
+**Purpose**: Statistical distribution comparison
+
+**Features**:
+- Quartiles, median, mean, outliers
+- Algorithm-to-algorithm comparison
+- Baseline inclusion
+- Variance analysis
+
+**Use Case**: Compare algorithm robustness and consistency
+
+**Key Insight**: Narrow boxes = consistent performance
+
+**Example**:
+```json
+"Plot_1": {
+  "PlotType": {
+    "BoxPlot": {
+      "Type": "box_plot",
+      "enableGrouping": false,
+      "ObjectiveAxis": {
+        "objectivesToPlot": ["Y1"]
+      }
+    }
+  }
+}
+```
+
+### 3. Custom Plot 
+**Purpose**: Performance over wall-clock time
+
+**Features**:
+- Time-based X-axis (seconds)
+- Accounts for varying iteration costs
+- Real-world performance view
+
+**Use Case**: When iterations have different computational costs
+
+### 4. Performance Profile
+**Purpose**: Algorithm ranking across multiple problems
+
+**Features**:
+- Cumulative distribution of performance ratios
+- Cross-problem comparison
+- Statistical significance
+
+**Use Case**: Determine best overall algorithm
+
+**Auto-Generated**: When multiple test cases exist
+
+### 5. Regret Analysis Plots
+**Purpose**: Distance from known optimum
+
+**Features**:
+- Iteration-based regret
+- Time-based regret
+- Convergence rate analysis
+
+**Use Case**: Validate algorithm quality when optimum is known
+
+---
+
+## Comparative Analysis
+
+### Overview
+
+Comparative analysis evaluates optimization algorithms by comparing their performance against user-selected baselines. The system computes normalized improvement, speedup factors, performance profiles, and regret metrics.
+
+**See [`analyzer/comparison/README.md`](analyzer/comparison/README.md) for detailed metric definitions.**
+
+---
+
+### Interactive Baseline Selection
+
+The benchmark module now features **dynamic baseline selection**, allowing you to choose any executed experiment as a comparison baseline.
+
+#### Workflow
+
+1. **Execute experiments** - Run your test cases:
    ```bash
-   # Using init.sh
-   ./init.sh up analyse
+   ./init.sh up benchmark
    ```
-3. Generated Reports are on default auto-opened in your browser:
-   - Reports are stored in `./results/reports/` directory
----
 
-## Project Structure
+2. **Interactive selection** - A browser interface opens automatically, showing all executed experiments with their metadata (objectives measured, iterations completed, etc.)
 
-#### Analysis Pipeline
-Modular analyzer with clear separation of concerns:
+3. **Select baselines** - Choose one or more experiments to serve as baselines for comparison
 
+4. **Automatic analysis** - The system computes all comparative metrics using your selected baselines
+
+5. **View report** - The HTML report displays normalized improvement, performance profiles, regret analysis, and comparison tables
+
+#### Configuration
+
+Enable comparative analysis by adding `ComparativeMetrics` to your configuration:
+
+```json
+{
+  "Benchmark": {
+    "ComparativeMetrics": {
+      "ComparativeTable": {
+        "experiment": true,
+        "baseline": true,
+        "normalizedImprovement": true,
+        "convergedAtIteration": true,
+        "experimentBest": true,
+        "baselineBest": true,
+        "finalRegret": true
+      },
+      "NormalizedImprovement": {
+        "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
+      },
+      "RegretAnalysis": {
+        "knownOptimum": 0.0,
+        "optimumPerObjective": {
+          "Y1": 0.0
+        },
+        "regretType": ["iteration", "time"]
+      },
+      "PerformanceProfile": {
+        "tauMax": 5.0,
+        "tauSteps": 50,
+        "objectivesToProfile": ["Y1", "Y2", "Y3"]
+      }
+    }
+  }
+}
 ```
-analyzer/
-├── config/                    # Configuration management
-│   ├── __init__.py
-│   └── benchmark_config.py    # Config data classes and JSON parsing
-│
-├── data_pipeline/             # Data loading and processing
-│   ├── __init__.py
-│   ├── experiment_loader.py   # Load .pkl dumps from disk
-│   ├── experiment_parser.py   # Parse and validate experiments
-│   ├── metric_extractor.py    # Auto-discover objectives and extract metrics
-│   └── data_processor.py      # Normalize and transform data
-│
-├── visualization/             # Report and plot generation
-│   ├── __init__.py
-│   ├── plot_generator.py      # Generate improvement/time plots
-│   ├── table_generator.py     # Generate summary tables
-│   └── report_generator.py    # Build HTML reports
-│
-└── orchestration/             # High-level coordination
-    ├── __init__.py
-    └── benchmark_analyzer.py  # Main analyzer orchestrator
+#### Benefits
+
+- **Flexible**: Use any experiment as baseline
+- **Iterative**: Compare new versions against previous runs
+- **Multi-baseline**: Compare against multiple references simultaneously
+- **Persistent**: Selection is saved for subsequent analyses
+- **No re-execution**: Change baseline without rerunning experiments
+
+#### Use Cases
+
+**Algorithm Evolution**:
+- Run version 1.0 of your algorithm
+- Run improved version 2.0
+- Select 1.0 as baseline to measure improvement
+
+**Multi-algorithm Comparison**:
+- Execute algorithms A, B, and C
+- Select A and B as baselines
+- Analyze C against both simultaneously
+
+**Domain Baselines**:
+- Include domain-specific reference implementations
+- Use production system results as baseline
+- Compare against known good configurations
+---
+
+#### Metrics
+
+**Normalized Improvement**: How much better than baseline
+- `objective_value`: Quality improvement
+- `time_to_target`: Speed improvement (time)
+- `iteration_to_target`: Speed improvement (iterations)
+
+**Regret**: Distance from known optimum
+- `iteration`: Regret over iterations
+- `time`: Regret over time
+
+**Performance Profile**: Algorithm ranking
+- Across multiple test cases
+- Statistical robustness
+
+### Example Output
+
+**Comparative Table**:
+```
+Experiment    Baseline      NI (Obj)  NI (Time)  NI (Iter)  Converged
+test_case_0   random-search 1.40      0.03       -0.17      27
+test_case_0   grid-search   1.65      -0.01      -3.38      27
 ```
 
-### Configuration and Templates
-- **`configs/benchmark_templates/`** - JSON configuration templates
-- **`configs/benchmark_feature_model/`** - Waffle feature model for configuration wizard
-- **`template/`** - HTML report templates
-
-### Results and Output
-- **`results/serialized/`** - Experiment dumps (`.pkl` files)
-- **`results/reports/`** - Generated HTML reports and CSV files
-
-### Utilities
-- **`util/shared_tools.py`** - Helper tools for file operations and utilities
-
-### Legacy Components
-- **`util/benchmark_analyser.py`** - Legacy analyzer (deprecated, kept for reference)
+**Normalized Improvement Plots**: Bar charts showing improvement factors
+**Regret Plots**: Convergence to optimum over time/iterations
+**Performance Profile**: Cumulative distribution curves
 
 ---
 
-## Data Flow
+### Normalization Strategies
 
-1. **Benchmark Execution** (`orchestrate_benchmark.py` → `benchmark_runner.py`)
-   - User defines and instantiates benchmark configuration
-   - User defines scenarios in `BRISEBenchmarkRunner`
-   - Runner generates Experiment Descriptions
-   - `MainAPIClient` executes experiments via Main Node API
-   - Results saved as `.pkl` dumps in `./results/serialized/`
+**MinOverAll**: Scale by minimum across all experiments
+```
+normalized = (value - min_all) / (max_all - min_all)
+```
 
-2. **Analysis Pipeline** (`orchestrate_benchmark.py` → `analyzer/`)
-   - `BenchmarkAnalyzer` orchestrates the pipeline:
-     - **Load**: `ExperimentLoader` reads `.pkl` files
-     - **Parse**: `ExperimentParser` validates and structures data
-     - **Extract**: `MetricExtractor` discovers objectives and extracts metrics
-     - **Process**: `DataProcessor` normalizes and transforms data
-     - **Visualize**: 
-       - `PlotGenerator` creates improvement/time plots
-       - `TableGenerator` creates summary statistics
-       - `ReportGenerator` assembles HTML report
-   - Output: HTML report and CSV files in `./results/reports/`
+**MaxOverAll**: Scale by maximum across all experiments
+```
+normalized = value / max_all
+```
+
+**Use Case**: Compare objectives with different scales
+
+### Grouping
+
+**Purpose**: Aggregate multiple runs of same test case
+
+**Effect**:
+- Min/max bands show run variability
+- Mean line shows average behavior
+- Better statistical robustness
+
+**Enable**: Set `enableGrouping: true` in plot config
+
+### Data Format
+
+Experiment dumps (`.pkl`) must contain:
+- `measured_configurations`: List of evaluated configurations
+- `results`: Dict mapping objective names to values
+- `start_time`, `end_time`: Timestamps for time-based metrics
+
+### Output Files
+
+**HTML Report**: `results/reports/benchmark_report.html`
+- Multi-tab interface
+- Embedded interactive plots
+- Sortable tables
+
+**CSV Files**:
+- `benchmark_all_objectives.csv`: Combined data
+- `benchmark_objective_Y1.csv`: Per-objective data
+
+**ZIP Archive**: `benchmark_all_tables.zip`
+- All CSV files bundled
 
 ---
 
-## Play Around with Code
+## Commands
 
-Benchmark module currently can be extended and modified with the dependencies listed in the [environment.yml](environment.yml) file.
+### Basic Commands
+
+| Command | Description |
+|---------|-------------|
+| `./init.sh up benchmark` | Execute benchmark and generate report |
+| `./init.sh analyse` | Analyze existing experiments (no execution) |
+| `./init.sh show_report` | Open latest report in browser |
+| `./init.sh cleanup` | Remove all generated files (.pkl, .csv, .html, .zip) |
+| `./init.sh cleanup_report` | Remove reports and baseline selection only |
+| `./init.sh waffle` | Start Waffle configuration wizard |
+
+## Contributing
+
+When adding new features:
+
+1. Update feature model (`.wfl`)
+2. Add config parsing in `benchmark_config.py`
+3. Implement feature in appropriate module
+4. Add tests and documentation
+5. Update README

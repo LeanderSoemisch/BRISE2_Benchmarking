@@ -8,8 +8,6 @@ class ExperimentLoader:
     """Loads and groups serialized experiment files"""
 
     REPETITION_PATTERN = re.compile(r'_(\d+)$')
-    # Pattern to match suffixes like (0), (1), (0)(1), (0)(1)(2), etc.
-    PARENTHESIS_SUFFIX_PATTERN = re.compile(r'(\(\d+\))+')
 
     def __init__(self, folder: str):
         self.folder = folder
@@ -23,14 +21,12 @@ class ExperimentLoader:
         return self._sort_by_start_time(experiments)
 
     def _get_pkl_files(self) -> List[str]:
-        files = [f for f in os.listdir(self.folder) if f.endswith('.pkl')]
-        return sorted(files)
+        return sorted(f for f in os.listdir(self.folder) if f.endswith('.pkl'))
 
     def _load_experiment(self, filename: str) -> Any:
         filepath = os.path.join(self.folder, filename)
         with open(filepath, 'rb') as f:
             exp = pickle.load(f)
-        # Store the filename for grouping purposes
         exp._source_filename = filename
         return exp
 

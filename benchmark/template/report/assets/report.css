@@ -372,3 +372,131 @@ footer {
     border-top: 1px solid #dfe6ec;
 }
 
+/* Comparative Analysis Section Styles */
+.comparative-section {
+    margin-top: 30px;
+    padding-top: 20px;
+}
+
+.section-divider {
+    height: 2px;
+    background: linear-gradient(to right, #3498db, #2ecc71, #f39c12);
+    margin: 20px 0;
+    border-radius: 2px;
+}
+
+.section-header {
+    font-size: 1.6em;
+    color: #2c3e50;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.comparative-header {
+    color: #2980b9;
+}
+
+.section-description {
+    background: #e8f4f8;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border-left: 4px solid #3498db;
+}
+
+.section-description p {
+    margin: 8px 0;
+    color: #34495e;
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+
+.section-description strong {
+    color: #2c3e50;
+}
+
+.info-note {
+    font-size: 0.85em !important;
+    color: #7f8c8d !important;
+    font-style: italic;
+    margin-top: 10px !important;
+}
+
+.subsection-header {
+    font-size: 1.2em;
+    color: #34495e;
+    margin: 25px 0 12px;
+    font-weight: 600;
+}
+
+.metrics-description {
+    background: #f8f9fa;
+    padding: 12px 18px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.metrics-legend {
+    list-style: none;
+    padding-left: 0;
+    margin: 8px 0;
+}
+
+.metrics-legend li {
+    padding: 4px 0;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.metrics-legend strong {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+/* Comparative Table Styles */
+table.comparative-table {
+    border-collapse: collapse;
+    font-size: 0.78em;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.comparative-table th {
+    background: #2980b9;
+    color: #fff;
+    padding: 12px 14px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
+.comparative-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e3e8ed;
+}
+
+.comparative-table tr:last-child td {
+    border-bottom: none;
+}
+
+.comparative-table tr:hover td {
+    background: #e8f4f8;
+}
+
+.comparative-table td.text {
+    text-align: left;
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.comparative-table td.num {
+    text-align: center;
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: #34495e;
+}
+

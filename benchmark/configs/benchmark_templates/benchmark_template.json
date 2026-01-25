@@ -88,6 +88,36 @@
                     }
                 }
             }
+        },
+        "Plot_2": {
+            "PlotType": {
+                "BoxPlot": {
+                    "Type": "box_plot",
+                    "enableGrouping": false,
+                    "MetricAxis": {
+                        "metricDescription": "iterations completed",
+                        "label": "Iteration",
+                        "scale": "linear"
+                    },
+                    "ObjectiveAxis": {
+                        "objectivesToPlot": [
+                            "Y1",
+                            "Y2",
+                            "Y3",
+                            "Y4",
+                            "Y5"
+                        ],
+                        "normalize": true,
+                        "NormalizationStrategy": {
+                            "MinOverAll": {
+                                "Type": "min_over_all_experiments"
+                            }
+                        },
+                        "label": "Normalized Objective",
+                        "scale": "linear"
+                    }
+                }
+            }
         }
     }
 }
