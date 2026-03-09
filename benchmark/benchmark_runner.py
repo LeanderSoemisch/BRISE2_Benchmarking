@@ -78,7 +78,7 @@ class BRISEBenchmarkRunner:
     def execute_experiment(self,
                            experiment_description: dict,
                            search_space: SearchSpace = None,
-                           number_of_repetitions: int = 3):
+                           number_of_repetitions: int = 11):
         """
          Check how many dumps are available for particular Experiment Description.
 
@@ -400,6 +400,96 @@ class BRISEBenchmarkRunner:
             self.execute_experiment(experiment_description)
 
         return self.counter
+    
+    @_benchmarkable
+    def benchmark_distribution_modes(self):
+        """
+        Benchmarks the influence of DistributionMode.
+        
+        1. Runs a baseline using AsynchronousDistribution.
+        2. Sweeps through various batch sizes for BatchedDistribution.
+        """
+        self.logger.info('In Benchmark function ...')
+
+        self.logger.info("Load Configuration: ...")
+        self._base_experiment_description, self._base_search_space = \
+            load_experiment_setup("./Resources/EnergyExperiment/EnergyExperiment_Bdistr.json")
+        
+        # --- Define Skeletons ---
+
+        # Skeleton 1: Asynchronous (Baseline)
+        async_skeleton = {
+            "DistributionMode": {
+                "AsynchronousDistribution": {
+                    "Type": "AsynchronousDistribution"
+                }
+            }
+        }
+
+        # Skeleton 2: Batched (Template sweeping)
+        batched_skeleton = {
+            "DistributionMode": {
+                "BatchedDistribution": {
+                    "Type": "BatchedDistribution"
+                },
+                "batchSize": {
+                    "Int": "1"
+                }
+            }
+        }
+
+        # Skeleton 3: Hybrid (Template sweeping)
+        hybrid_skeleton = {
+            "DistributionMode": {
+                "HybridDistribution": {
+                    "Type": "HybridDistribution"
+                },
+                "batchSize": {
+                    "Int": "1"
+                },
+                "timeout": {
+                        "Int": "350"
+                }
+            }
+        }
+
+        # Get the base experiment description
+        # deepcopy to avoid polluting the 'self.base_experiment_description'
+        from copy import deepcopy
+        experiment_description = self.base_experiment_description
+
+        # --- 1. Run Baseline (Async) ---
+        # self.logger.info("Executing benchmark: AsynchronousDistribution")
+        # experiment_description.update(deepcopy(async_skeleton))
+        # self.execute_experiment(experiment_description)
+
+
+        # # --- 2. Run Batched Sweep ---
+        # batch_sizes_to_test = [9]
+        batch_sizes_to_test2 = [6,7,8,9]
+
+        # for size in batch_sizes_to_test:
+        #     self.logger.info(f"Executing benchmark: BatchedDistribution with size {size}")
+            
+        #     # Reset the config to the batched skeleton
+        #     experiment_description.update(deepcopy(batched_skeleton))
+        #     experiment_description['DistributionMode']['batchSize']['Int'] = str(size)
+            
+        #     # Execute the run
+        #     self.execute_experiment(experiment_description)
+
+        # --- 3. Run Hybrid Sweep ---
+        for size in batch_sizes_to_test2:
+            self.logger.info(f"Executing benchmark: HybridDistribution with size {size}")
+            
+            # Reset the config to the hybrid skeleton
+            experiment_description.update(deepcopy(hybrid_skeleton))
+            experiment_description['DistributionMode']['batchSize']['Int'] = str(size)
+            
+            # Execute the run
+            self.execute_experiment(experiment_description)
+
+        return self.counter
 
     @_benchmarkable
     def fill_db(self):
@@ -563,7 +653,7 @@ class BRISEBenchmarkRunner:
         }
         # test case with 2 float parameters
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_0.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_0.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_2float_model_skeleton))
@@ -571,7 +661,7 @@ class BRISEBenchmarkRunner:
 
         # test case with float nom parameters
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_4.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_4.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_float_nom_model_skeleton))
@@ -579,7 +669,7 @@ class BRISEBenchmarkRunner:
 
         # test case with float nom parameters and random DCH
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_9.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_9.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         experiment_description.update(deepcopy(flat_float_nom_model_skeleton))
@@ -587,7 +677,7 @@ class BRISEBenchmarkRunner:
 
         # test case with all parameter types and random DCH
         self._base_experiment_description, self._base_search_space = \
-            load_experiment_setup("./Resources/test/test_cases_product_configurations/test_case_2.json")
+            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_case_2.json")
         experiment_description = self.base_experiment_description
         experiment_description.update(deepcopy(time_based_sc_skeleton))
         self.execute_experiment(experiment_description, number_of_repetitions=1)
