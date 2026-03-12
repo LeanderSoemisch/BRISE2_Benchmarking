@@ -69,43 +69,61 @@ deactivate BenchmarkRunner
 
 == 3. Analysis ==
 BenchmarkRunner -->> Orchestrator: ✓ All experiments complete
-Orchestrator -> Analyzer: **Analyze results**\n//poc_analyzer_main()//
+participant "Config\nDetector" as ConfigDetector #thistle
+participant "Interactive\nBaseline Analyzer" as InteractiveBaselineAnalyzer #orchid
+participant "Baseline\nSelection UI" as BaselineSelectionUI #lightcyan
+participant "Comparative\nOrchestrator" as ComparativeOrchestrator #lightsteelblue
+participant "Report/Export\nService" as ReportService #lightgray
+
+Orchestrator -> ConfigDetector: **Detect benchmark config**\n//detect_config_file()//
+ConfigDetector -->> Orchestrator: config path
+Orchestrator -> ConfigDetector: **Load + inspect config**\n//load_config(), has_comparative_metrics()//
+ConfigDetector -->> Orchestrator: config dict + comparative mode flag
+
+alt Interactive baselines enabled AND comparative metrics active
+    Orchestrator -> InteractiveBaselineAnalyzer: **analyze_with_baseline_selection()**
+    activate InteractiveBaselineAnalyzer
+
+    alt Previous baseline selection exists
+        InteractiveBaselineAnalyzer -> InteractiveBaselineAnalyzer: **Reuse baseline_selection.json**
+    else No saved selection
+        InteractiveBaselineAnalyzer -> Analyzer: **Load experiments for UI choices**
+        Analyzer -->> InteractiveBaselineAnalyzer: selectable experiments
+        InteractiveBaselineAnalyzer -> BaselineSelectionUI: **Start local server + render selection page**
+        BaselineSelectionUI -> User: **Open browser**\n//http://localhost:8765//
+        User -> BaselineSelectionUI: **Select baseline experiments**
+        BaselineSelectionUI -->> InteractiveBaselineAnalyzer: selected baseline names
+        InteractiveBaselineAnalyzer -> InteractiveBaselineAnalyzer: **Persist baseline_selection.json**
+    end
+
+    InteractiveBaselineAnalyzer -> ComparativeOrchestrator: **Register user baselines**
+    InteractiveBaselineAnalyzer -> Analyzer: **Run analyzer with selected baselines**
+    deactivate InteractiveBaselineAnalyzer
+else Standard analysis path
+    Orchestrator -> Analyzer: **Analyze results**\n//BenchmarkAnalyzer.analyze()//
+end
+
 activate Analyzer
+Analyzer -> Analyzer: **Load dumps + partition objectives/instances**
 
-Analyzer -> Analyzer: **Load all experiment dumps**
-note right
-  From: ./results/serialized/
-  Load: experiment_*.pkl
-end note
+loop For each objective partition
+    Analyzer -> Analyzer: **Generate plots + summary table**
+    note right of Analyzer
+      Improvement/custom/box plots
+      Grouping + normalization
+      Known-optimum overlay (optional)
+    end note
+end
 
-Analyzer -> Analyzer: **Compute statistics**
-note right
-  - Performance metrics
-  - Convergence analysis
-  - Comparison plots
-end note
+alt Comparative metrics configured
+    Analyzer -> ComparativeOrchestrator: **Compute comparative metrics**
+    ComparativeOrchestrator -->> Analyzer: comparative results per objective
+    Analyzer -> Analyzer: **Generate comparative plots + performance profile**
+end
 
-Analyzer -> Analyzer: **Generate visualizations**
-note right
-  Create plots:
-  - Optimization progress
-  - Configuration heatmaps
-  - Performance comparison
-end note
-
-Analyzer -> Analyzer: **Create HTML report**
-note right
-  Template: report_template.html
-  Output: benchmark_report.html
-end note
-
+Analyzer -> ReportService: **Export CSV/ZIP + render HTML report**
+ReportService -->> Analyzer: benchmark_report.html + download artifacts
 Analyzer -> User: **Open HTML report**
-note right
-  Interactive report with:
-  - Summary statistics
-  - Plots and charts
-  - Detailed results
-end note
 deactivate Analyzer
 deactivate Orchestrator
 

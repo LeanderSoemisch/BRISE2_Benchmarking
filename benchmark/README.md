@@ -47,7 +47,7 @@ This module enables automated experiment evaluation, statistical analysis, and i
 
 ```bash
 # Analyze existing experiment dumps
-./init.sh up analyse
+./init.sh analyse
 ```
 
 ---
@@ -63,8 +63,7 @@ This module enables automated experiment evaluation, statistical analysis, and i
 - Aggregate performance profiles across objectives
 
 #### **Visualization Suite**
-- **Improvement Plots**: Track best-so-far progression over iterations
-- **Time-Based Plots**: Performance evolution over wall-clock time
+- **Improvement Plots**: Track best-so-far progression over iterations or measured time
 - **Box Plots**: Statistical distribution comparison across algorithms
 - **Performance Profiles**: Algorithm ranking across multiple problems
 - **Regret Analysis**: Distance from known optimum over time/iterations
@@ -178,7 +177,7 @@ Then:
 2. Paste `benchmark_feature_model.wfl` content
 3. Click "Configure product manually"
 4. Fill in fields and download `configuration.json`
-5. Save to `benchmark/configuration.json`
+5. Save to `benchmark/configs/benchmark_templates/configuration.json`
 
 ### Manual Configuration
 
@@ -226,14 +225,17 @@ See `configs/benchmark_templates/` for examples.
 - `normalize`: Apply normalization
 - `objectivesToPlot`: Which objectives to include
 
-#### Baseline Settings
-- `RandomSearchBaseline.samplingSize`: Number of random samples
-- `GridSearchBaseline.gridResolution`: Grid points per dimension
-
 #### Comparative Metrics
+- `showSummaryTable`: Show/hide comparative summary table tab in report
+- `ComparativeTable.speedupFactor`: Show/hide `NI (Time)` and `NI (Iterations)` columns
 - `RegretAnalysis.regretType`: `["iteration"]`, `["time"]`, or both
 - `NormalizedImprovement.improvementType`: Types of improvement to calculate
 - `PerformanceProfile.objectivesToProfile`: Objectives for profile
+
+#### Grouping and Known Optima
+- `enableGrouping`: Aggregate repetitions into mean plus/minus std bands
+- `CustomGrouping.autoGroupBy`: Build group labels from metadata paths (e.g. `mh_type`, `tuning_variant`)
+- `KnownOptima`: Per-objective or per-instance optimum map used by regret and optimum reference lines
 
 ---
 
@@ -281,7 +283,7 @@ See `configs/benchmark_templates/` for examples.
          │
          ▼
 ┌─────────────────┐
-│ ./init.sh up    │
+│ ./init.sh       │
 │ analyse         │
 └────────┬────────┘
          │
@@ -307,14 +309,14 @@ See `configs/benchmark_templates/` for examples.
          │
          ▼
 ┌─────────────────┐
-│ Execute         │
-│ Baselines       │
+│ Comparative     │
+│ Analysis        │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ Comparative     │
-│ Analysis        │
+│ Select          │
+│ Baseline        │
 └────────┬────────┘
          │
          ▼
@@ -390,14 +392,13 @@ See `configs/benchmark_templates/` for examples.
 ```
 
 ### 3. Custom Plot 
-**Purpose**: Performance over wall-clock time
+**Purpose**: Custom-specialized plots (e.g. iterations over time, to track how long each iteration of algorithms took to compute)
 
 **Features**:
-- Time-based X-axis (seconds)
-- Accounts for varying iteration costs
+- Custom axis definitions (e.g. time, iterations)
 - Real-world performance view
 
-**Use Case**: When iterations have different computational costs
+**Use Case**: When analyzing specific performance metrics like iterations x time
 
 ### 4. Performance Profile
 **Purpose**: Algorithm ranking across multiple problems
@@ -427,43 +428,119 @@ See `configs/benchmark_templates/` for examples.
 
 ### Overview
 
-Comparative analysis evaluates optimization algorithms by comparing their performance against user-selected baselines. The system computes normalized improvement, speedup factors, performance profiles, and regret metrics.
+Comparative analysis compares measured experiment trajectories against user-selected baseline experiments. The report can include normalized improvement, speedup factors, regret, and performance profiles.
 
 **See [`analyzer/comparison/README.md`](analyzer/comparison/README.md) for detailed metric definitions.**
 
 ---
 
-### Interactive Baseline Selection
+### Central Guide
 
-The benchmark module now features **dynamic baseline selection**, allowing you to choose any executed experiment as a comparison baseline.
+This section is the single place to understand how comparative analysis works in this benchmark pipeline.
 
-#### Workflow
+#### 1) Baseline Selection
 
-1. **Execute experiments** - Run your test cases:
-   ```bash
-   ./init.sh up benchmark
-   ```
+- Run analysis with comparative metrics enabled.
+- If interactive mode is enabled (default), a browser UI opens and you select one or multiple executed experiments as baselines.
+- Selections are persisted (`baseline_selection.json`) and reused in later runs until changed/cleared.
+- Selected baseline experiments are excluded from the normal experiment list to avoid double counting in plots and tables.
 
-2. **Interactive selection** - A browser interface opens automatically, showing all executed experiments with their metadata (objectives measured, iterations completed, etc.)
+Run benchmark + analysis:
 
-3. **Select baselines** - Choose one or more experiments to serve as baselines for comparison
+```bash
+./init.sh up benchmark
+```
 
-4. **Automatic analysis** - The system computes all comparative metrics using your selected baselines
+Run analysis only on existing dumps:
 
-5. **View report** - The HTML report displays normalized improvement, performance profiles, regret analysis, and comparison tables
+```bash
+./init.sh analyse
+```
 
-#### Configuration
+#### 2) Normalized Improvement
 
-Enable comparative analysis by adding `ComparativeMetrics` to your configuration:
+- `objective_value`: compares best objective quality against baseline trajectory.
+- `time_to_target`: speedup factor based on runtime to target.
+- `iteration_to_target`: speedup factor based on iterations to target.
+
+Interpretation:
+
+- `> 1.0` generally indicates better/faster than baseline.
+- `< 1.0` indicates worse/slower than baseline.
+- `1.0` indicates parity.
+
+#### 3) Performance Profile
+
+- Aggregates comparisons across objectives/problems.
+- Shows how often each approach is within a performance ratio threshold (`tau`).
+- Useful for robust cross-problem ranking, not just single-objective winners.
+
+Key config:
+
+- `PerformanceProfile.tauMax`
+- `PerformanceProfile.tauSteps`
+- `PerformanceProfile.objectivesToProfile`
+
+#### 4) Regret and Known Optima
+
+- Regret requires known optimum values.
+- You can define optima globally per objective/instance in `KnownOptima`.
+- `RegretAnalysis.optimumPerObjective` overrides `KnownOptima` for overlapping keys.
+- `RegretAnalysis.knownOptimum` is a fallback single value.
+
+Recommended pattern:
+
+```json
+"KnownOptima": {
+  "kroA100.tsp": 21282,
+  "pr439.tsp": 107217
+}
+```
+
+#### 5) Grouping (for cleaner, comparable plots)
+
+Grouping aggregates repeated runs into a mean line with a plus/minus std confidence band.
+
+- Enable with `enableGrouping: true` on a plot.
+- Optional `CustomGrouping.autoGroupBy` creates explicit legend groups from metadata paths.
+- Typical dimensions: `mh_type`, `tuning_variant`, `problem_instance` (used for recreating the analysis results from genericPC experiments).
+
+Example:
+
+```json
+"CustomGrouping": {
+  "autoGroupBy": [
+    { "path": "mh_type", "label": "MH" },
+    { "path": "tuning_variant", "label": "variant" }
+  ]
+}
+```
+
+#### 6) Comparative Table Controls
+
+`ComparativeMetrics.showSummaryTable` controls if the comparative table section is rendered in the report.
+
+`ComparativeMetrics.ComparativeTable` controls columns:
+
+- `normalizedImprovement` controls `NI (Objective)`
+- `speedupFactor` controls `NI (Time)` and `NI (Iterations)`
+- `finalRegret`, `convergedAtIteration`, `experimentBest`, `baselineBest`, `experiment`, `baseline`
+
+#### 7) Minimal Comparative Config Example
 
 ```json
 {
   "Benchmark": {
+    "KnownOptima": {
+      "Y1": 0.0
+    },
     "ComparativeMetrics": {
+      "showSummaryTable": true,
       "ComparativeTable": {
         "experiment": true,
         "baseline": true,
         "normalizedImprovement": true,
+        "speedupFactor": true,
         "convergedAtIteration": true,
         "experimentBest": true,
         "baselineBest": true,
@@ -473,7 +550,6 @@ Enable comparative analysis by adding `ComparativeMetrics` to your configuration
         "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
       },
       "RegretAnalysis": {
-        "knownOptimum": 0.0,
         "optimumPerObjective": {
           "Y1": 0.0
         },
@@ -488,107 +564,21 @@ Enable comparative analysis by adding `ComparativeMetrics` to your configuration
   }
 }
 ```
-#### Benefits
 
-- **Flexible**: Use any experiment as baseline
-- **Iterative**: Compare new versions against previous runs
-- **Multi-baseline**: Compare against multiple references simultaneously
-- **Persistent**: Selection is saved for subsequent analyses
-- **No re-execution**: Change baseline without rerunning experiments
+#### 8) Data and Outputs
 
-#### Use Cases
+Expected experiment dump structure (`.pkl`):
 
-**Algorithm Evolution**:
-- Run version 1.0 of your algorithm
-- Run improved version 2.0
-- Select 1.0 as baseline to measure improvement
+- `measured_configurations`
+- per-configuration `results`/`averaged_result`
+- `start_time` and `end_time` for time-based metrics
 
-**Multi-algorithm Comparison**:
-- Execute algorithms A, B, and C
-- Select A and B as baselines
-- Analyze C against both simultaneously
+Generated outputs:
 
-**Domain Baselines**:
-- Include domain-specific reference implementations
-- Use production system results as baseline
-- Compare against known good configurations
----
-
-#### Metrics
-
-**Normalized Improvement**: How much better than baseline
-- `objective_value`: Quality improvement
-- `time_to_target`: Speed improvement (time)
-- `iteration_to_target`: Speed improvement (iterations)
-
-**Regret**: Distance from known optimum
-- `iteration`: Regret over iterations
-- `time`: Regret over time
-
-**Performance Profile**: Algorithm ranking
-- Across multiple test cases
-- Statistical robustness
-
-### Example Output
-
-**Comparative Table**:
-```
-Experiment    Baseline      NI (Obj)  NI (Time)  NI (Iter)  Converged
-test_case_0   random-search 1.40      0.03       -0.17      27
-test_case_0   grid-search   1.65      -0.01      -3.38      27
-```
-
-**Normalized Improvement Plots**: Bar charts showing improvement factors
-**Regret Plots**: Convergence to optimum over time/iterations
-**Performance Profile**: Cumulative distribution curves
-
----
-
-### Normalization Strategies
-
-**MinOverAll**: Scale by minimum across all experiments
-```
-normalized = (value - min_all) / (max_all - min_all)
-```
-
-**MaxOverAll**: Scale by maximum across all experiments
-```
-normalized = value / max_all
-```
-
-**Use Case**: Compare objectives with different scales
-
-### Grouping
-
-**Purpose**: Aggregate multiple runs of same test case
-
-**Effect**:
-- Min/max bands show run variability
-- Mean line shows average behavior
-- Better statistical robustness
-
-**Enable**: Set `enableGrouping: true` in plot config
-
-### Data Format
-
-Experiment dumps (`.pkl`) must contain:
-- `measured_configurations`: List of evaluated configurations
-- `results`: Dict mapping objective names to values
-- `start_time`, `end_time`: Timestamps for time-based metrics
-
-### Output Files
-
-**HTML Report**: `results/reports/benchmark_report.html`
-- Multi-tab interface
-- Embedded interactive plots
-- Sortable tables
-
-**CSV Files**:
-- `benchmark_all_objectives.csv`: Combined data
-- `benchmark_objective_Y1.csv`: Per-objective data
-
-**ZIP Archive**: `benchmark_all_tables.zip`
-- All CSV files bundled
+- HTML report: `results/reports/benchmark_report.html`
+- Combined CSV: `results/reports/benchmark_all_objectives.csv`
+- Per-objective CSV files: `results/reports/benchmark_objective_<objective>.csv`
+- ZIP bundle: `results/reports/benchmark_all_tables.zip`
 
 ---
 

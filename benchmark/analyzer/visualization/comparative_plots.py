@@ -55,7 +55,7 @@ class ComparativePlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
-    BASELINE_COLORS = ['#2980b9', '#8e44ad', '#16a085', '#c0392b', '#d35400']
+    BASELINE_COLORS = ['#2980b9', '#e67e22', '#27ae60', '#c0392b', '#8e44ad']
 
     def plot_normalized_improvement(
         self,

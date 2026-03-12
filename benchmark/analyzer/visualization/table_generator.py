@@ -2,7 +2,7 @@ import math
 from typing import List, Dict, Any, Set, Optional, Tuple
 
 from analyzer.config.benchmark_config import TableConfig
-from analyzer.data_pipeline import ExperimentParser, MetricExtractor, DataProcessor
+from analyzer.data_pipeline import ExperimentParser, MetricExtractor
 
 
 class TableGenerator:
@@ -12,14 +12,11 @@ class TableGenerator:
         'configuration_strategy': 'ConfigurationStrategy', 'stop_condition': 'StopCondition', 'test_case': 'TestCase',
         'experiment': 'Experiment', 'objective': 'Objective', 'iterations': 'Iterations', 'initial_value': 'Initial',
         'final_best_value': 'Final best', 'improvement_percentage': 'Improvement %',
-        'improvement_absolute': 'Absolute improvement', 'runtime': 'Runtime (s)',
-        'regret_final': 'Regret (final)', 'normalized_improvement': 'Norm. Improvement',
-        'speedup_vs_random': 'Speedup vs Random', 'speedup_vs_grid': 'Speedup vs Grid',
-        'performance_ratio': 'Performance Ratio'}
+        'improvement_absolute': 'Absolute improvement', 'runtime': 'Runtime (s)'}
 
     PREFERRED_COLUMN_ORDER = ['Task', 'Model', 'Sampler', 'ConfigurationStrategy', 'StopCondition', 'TestCase',
         'Experiment', 'Objective', 'Iterations', 'Initial', 'Final best', 'Absolute improvement', 'Improvement %',
-        'Runtime (s)', 'Regret (final)', 'Norm. Improvement', 'Speedup vs Random', 'Speedup vs Grid']
+        'Runtime (s)']
 
     def __init__(self, parser: ExperimentParser, extractor: MetricExtractor):
         self.parser = parser
@@ -27,18 +24,7 @@ class TableGenerator:
 
     def create_table(self, experiments: List[Any], objective: str, table_config: TableConfig,
                      comparative_data: Optional[Dict[str, Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
-        """
-        Build summary table for a specific objective.
-
-        Args:
-            experiments: List of experiments
-            objective: Objective name
-            table_config: Table configuration
-            comparative_data: Optional dict mapping experiment names to comparative metrics
-
-        Returns:
-            List of table rows
-        """
+        """Build summary table for a specific objective"""
         rows = []
         for exp in experiments:
             exp_name = self.parser.get_name(exp)
@@ -50,30 +36,20 @@ class TableGenerator:
 
     def _build_experiment_row(self, exp: Any, objective: str, table_config: TableConfig,
                              comparative_data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Build table row for single experiment.
-
-        Args:
-            exp: Experiment data
-            objective: Objective name
-            table_config: Table configuration
-            comparative_data: Optional comparative metrics for this experiment
-
-        Returns:
-            Dictionary representing a table row
-        """
+        """Build table row for single experiment"""
         values = self.extractor.extract_objective_series(exp, objective)
         if not values:
             return None
 
+        # extract_objective_series already returns the best-so-far series;
+        # values[0] is the initial value, values[-1] is the cumulative best.
         initial = values[0]
-        best_series = DataProcessor.compute_best_so_far(values)
-        final_best = best_series[-1] if best_series else None
+        final_best = values[-1]
 
         improvement_abs, improvement_pct = self._compute_improvement(initial, final_best)
 
         exp_name = self.parser.get_name(exp)
-        features = self.parser.parse_features(exp_name)
+        features = self.parser.parse_features_from_experiment(exp)
         runtime = self.extractor.extract_runtime(exp)
 
         row = {'Task': features.get('Task'), 'Model': features.get('Model'), 'Sampler': features.get('Sampler'),
@@ -87,8 +63,6 @@ class TableGenerator:
         if comparative_data:
             row['Regret (final)'] = self._format_metric(comparative_data.get('regret_final'))
             row['Norm. Improvement'] = self._format_percentage(comparative_data.get('normalized_improvement'))
-            row['Speedup vs Random'] = self._format_speedup(comparative_data.get('speedup_vs_random'))
-            row['Speedup vs Grid'] = self._format_speedup(comparative_data.get('speedup_vs_grid'))
             row['Performance Ratio'] = self._format_metric(comparative_data.get('performance_ratio'))
 
         return row
@@ -141,11 +115,7 @@ class TableGenerator:
         return ''.join(html_parts)
 
     def format_comparative_table(self, rows: List[Dict[str, Any]]) -> str:
-        """Format comparative metrics table rows as HTML.
-
-        Uses a preferred column order for presentation; any remaining columns
-        are appended in sorted order.
-        """
+        """Format comparative metrics table rows as HTML"""
         if not rows:
             return ""
 

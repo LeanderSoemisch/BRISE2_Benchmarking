@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+from analyzer.util.trajectory_utils import extract_best_so_far_series
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,23 +37,12 @@ class BaselineResult:
             logger.warning("No measured_configurations found in baseline experiment")
             return []
 
-        trajectory = []
-        current_best = float('inf')
-
-        for config in measured_configs:
-            results = getattr(config, 'averaged_result', None) or getattr(config, 'results', {})
-            if results:
-                value = results.get(objective) if objective else None
-                if value is None and hasattr(results, 'keys'):
-                    value = results[list(results.keys())[0]]
-                if value is None:
-                    continue
-                current_best = min(current_best, value)
-                trajectory.append(current_best)
-            else:
-                trajectory.append(current_best)
-
-        return trajectory
+        return extract_best_so_far_series(
+            experiment,
+            objective=objective,
+            minimize=True,
+            only_enabled_improves=False,
+        )
 
 
 class BaselineManager:

@@ -72,7 +72,7 @@ class BRISEBenchmarkRunner:
                 "Benchmark is going to run %s unique Experiments (please, take into account the repetitions as well)."
                 % len(self.experiments_to_be_performed))
             self.is_calculating_number_of_experiments = False
-            benchmarking_function(self, *args, *kwargs)
+            benchmarking_function(self, *args, **kwargs)
         return wrapper
 
     def execute_experiment(self,
@@ -742,7 +742,7 @@ class MainAPIClient:
     def stop_client(self):
         self.customer_thread.stop()
 
-    def download_latest_dump(self, *args, **kwargs):
+    def download_latest_dump(self):
         if not os.path.exists(self.dump_storage):
             os.makedirs(self.dump_storage)
         param = {'format': 'pkl'}

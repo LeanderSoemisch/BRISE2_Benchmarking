@@ -11,6 +11,19 @@ class ExperimentParser:
     TEST_CASE_PATTERN = re.compile(r'(test_case_\d+(?:_[a-zA-Z_]+)?)')
 
     @staticmethod
+    def _empty_features() -> Dict[str, Any]:
+        return {
+            'Task': None,
+            'Model': None,
+            'Sampler': None,
+            'ConfigurationStrategy': None,
+            'StopCondition': None,
+            'TestCase': None,
+            'Index': None,
+            'ExperimentName': None,
+        }
+
+    @staticmethod
     def get_name(exp: Any) -> str:
         """Get experiment name or ID"""
         return getattr(exp, 'name', None) or getattr(exp, 'ed_id', None) or 'experiment'
@@ -22,8 +35,7 @@ class ExperimentParser:
         - exp_<task>_<model>_<sampler>_<configStrategy>_<stopCondition>_test_case_<N>[_<descriptor>][_<idx>]
         - exp_<task>_<model>_<sampler>_<configStrategy>_<stopCondition>[_<idx>]
         """
-        features = {'Task': None, 'Model': None, 'Sampler': None, 'ConfigurationStrategy': None, 'StopCondition': None,
-            'TestCase': None, 'Index': None, 'ExperimentName': None}
+        features = self._empty_features()
 
         match = self.PATTERN_WITH_TEST_CASE.match(raw_name)
         if match:
@@ -57,6 +69,57 @@ class ExperimentParser:
                 features['Index'] = int(match.group(6))
 
         return features
+
+    def parse_features_from_experiment(self, exp: Any) -> Dict[str, Any]:
+        """Extract table features from structured metadata with filename fallback."""
+        raw_name = self.get_name(exp)
+        fallback = self.parse_features(raw_name)
+        features = self._empty_features()
+
+        try:
+            from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
+            meta = ExperimentMetadata.extract(exp)
+        except (ImportError, AttributeError, TypeError, ValueError):
+            meta = {}
+
+        model_types = meta.get('model_types') if isinstance(meta.get('model_types'), list) else []
+        features['Task'] = meta.get('task_name') or fallback.get('Task')
+        features['Model'] = (model_types[0] if model_types else None) or fallback.get('Model')
+        features['Sampler'] = (
+            meta.get('description.Sampler')
+            or meta.get('description.Searchspace.sampler')
+            or fallback.get('Sampler')
+        )
+        features['ConfigurationStrategy'] = (
+            meta.get('hyperparams_mode')
+            or meta.get('tuning_variant')
+            or fallback.get('ConfigurationStrategy')
+        )
+        features['StopCondition'] = (
+            meta.get('description.StopCondition.Name')
+            or meta.get('description.StopCondition.Type')
+            or fallback.get('StopCondition')
+        )
+        features['TestCase'] = self._extract_test_case(meta, fallback, raw_name)
+        features['Index'] = fallback.get('Index')
+        features['ExperimentName'] = raw_name
+
+        return features
+
+    def _extract_test_case(self, meta: Dict[str, Any], fallback: Dict[str, Any], raw_name: str) -> Any:
+        if fallback.get('TestCase') is not None:
+            return fallback.get('TestCase')
+
+        configured_case = meta.get('description.TaskConfiguration.Scenario.TestCase')
+        if configured_case is not None:
+            return configured_case
+
+        display_name = self.build_display_name(raw_name)
+        match = re.search(r'test_case_(\d+)', display_name)
+        if match:
+            return int(match.group(1))
+
+        return None
 
     def build_display_name(self, raw_name: str) -> str:
         """Build display name from raw experiment name

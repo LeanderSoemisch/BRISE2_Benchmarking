@@ -29,6 +29,8 @@ Benchmark {
     objectivesToMeasure -> array
   }
 
+  KnownOptima ? -> object
+
   Table ? {
     task -> boolean
     model -> boolean
@@ -50,8 +52,20 @@ Benchmark {
       ImprovementPlot {
         Type -> predefined
         [Type = 'improvement_plot']
-        
+
         enableGrouping -> boolean
+        title -> string
+
+        filterConditions * {
+          path     -> string
+          value    -> string
+          contains -> boolean
+          pattern  -> string
+        }
+
+        CustomGrouping ? {
+          autoGroupBy -> array
+        }
 
         MetricAxis {
           metricDescription -> string
@@ -85,6 +99,17 @@ Benchmark {
         [Type = 'parallel_coordinates_plot']
         
         enableGrouping -> boolean
+        title -> string
+
+        filterConditions * {
+          path -> string
+          value -> string
+          contains -> boolean
+          pattern -> string
+        }
+        CustomGrouping ? {
+          autoGroupBy -> array
+        }
 
         MetricAxis {
           metricDescription -> string
@@ -116,6 +141,17 @@ Benchmark {
         [Type = 'box_plot']
 
         enableGrouping -> boolean
+        title -> string
+
+        filterConditions * {
+          path -> string
+          value -> string
+          contains -> boolean
+          pattern -> string
+        }
+        CustomGrouping ? {
+          autoGroupBy -> array
+        }
 
         MetricAxis {
           metricDescription -> string
@@ -141,19 +177,6 @@ Benchmark {
           [scale in {"linear", "log10"}]
         }
       }
-    }
-  }
-
-  BaselineConfiguration ? {
-    reuseExisting -> boolean
-
-    RandomSearchBaseline ? {
-      samplingSize -> integer
-    }
-
-    GridSearchBaseline ? {
-      gridResolution -> integer
-      maxPoints -> integer
     }
   }
 

@@ -51,7 +51,7 @@ def analyze(
 ):
     try:
         if config_path is None:
-            config_path = ConfigDetector.detect_config_file()
+            config_path = ConfigDetector.detect_config_file(base_dir=Path(__file__).resolve().parent)
             if not config_path:
                 logging.error("No configuration file found. Please provide a benchmark configuration.")
                 return

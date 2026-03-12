@@ -1,7 +1,9 @@
 import logging
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from analyzer.data_pipeline import ExperimentParser
+from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
 
 from analyzer.config import BenchmarkConfig
 from analyzer.comparison import BaselineManager, ComparisonProcessor
@@ -64,10 +66,7 @@ class ComparativeAnalysisOrchestrator:
                         'runtime': extractor.extract_runtime(exp)
                     }
 
-                    task_name = getattr(exp, 'description', {}).get("TaskConfiguration", {}).get("TaskName", "unknown")
-                    matching_baselines = [(k, v) for k, v in baselines.items() if task_name in k or k.startswith(task_name)]
-                    if not matching_baselines:
-                        matching_baselines = list(baselines.items())
+                    matching_baselines = self._select_matching_baselines(exp, exp_name, baselines)
 
                     for baseline_key, baseline in matching_baselines:
                         try:
@@ -95,4 +94,56 @@ class ComparativeAnalysisOrchestrator:
                 comparisons[objective] = objective_comparisons
 
         return comparisons
+
+    def _select_matching_baselines(self, exp: Any, exp_name: str, baselines: Dict[str, Any]) -> List[Any]:
+        exp_meta = ExperimentMetadata.extract(exp)
+        exp_task = self._normalize_key(exp_meta.get("task_name", ""))
+        exp_display = self._normalize_key(self.parser.build_display_name(exp_name))
+        exp_identifier = self._normalize_key(exp_name)
+
+        matched = []
+        for baseline_key, baseline in baselines.items():
+            baseline_exp = getattr(baseline, 'raw_experiment', None)
+            baseline_meta = ExperimentMetadata.extract(baseline_exp) if baseline_exp is not None else {}
+            baseline_task = self._normalize_key(baseline_meta.get("task_name", ""))
+
+            baseline_name = self._baseline_name(baseline_key, baseline)
+            baseline_identifier = self._normalize_key(baseline_name)
+            baseline_display = self._normalize_key(self.parser.build_display_name(baseline_name))
+
+            if exp_task and baseline_task and exp_task == baseline_task:
+                matched.append((baseline_key, baseline))
+                continue
+
+            if exp_identifier and baseline_identifier and exp_identifier == baseline_identifier:
+                matched.append((baseline_key, baseline))
+                continue
+
+            if exp_display and baseline_display and exp_display == baseline_display:
+                matched.append((baseline_key, baseline))
+
+        if matched:
+            return matched
+
+        logger.warning(
+            "No baseline matched experiment '%s' by task/id/display; using all selected baselines",
+            exp_name,
+        )
+        return list(baselines.items())
+
+    @staticmethod
+    def _baseline_name(baseline_key: str, baseline: Any) -> str:
+        raw_experiment = getattr(baseline, 'raw_experiment', None)
+        if raw_experiment is None:
+            return baseline_key
+        return getattr(raw_experiment, 'name', None) or getattr(raw_experiment, 'ed_id', None) or baseline_key
+
+    @staticmethod
+    def _normalize_key(value: Any) -> str:
+        if value is None:
+            return ""
+        text = str(value).strip().lower()
+        if not text:
+            return ""
+        return re.sub(r'[^a-z0-9]+', '_', text).strip('_')
 

@@ -53,6 +53,10 @@ class PlotConfig:
     objective_label: str
     objective_scale: str
     enable_grouping: bool = False
+    # Per-plot overrides (all optional)
+    title: Optional[str] = None
+    filter_conditions: List[Any] = field(default_factory=list)   # List[MatchCondition]
+    plot_grouping: Optional[Any] = None                           # Optional[CustomGroupingConfig]
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -105,6 +109,7 @@ class ComparativeTableConfig:
     experiment: bool = True
     baseline: bool = True
     normalized_improvement: bool = True
+    speedup_factor: bool = True
     converged_at_iteration: bool = True
     experiment_best: bool = True
     baseline_best: bool = True
@@ -141,6 +146,59 @@ class ComparativeMetricsConfig:
 
 
 @dataclass
+class MatchCondition:
+    """
+    A single generic condition that checks one attribute of an experiment's metadata.
+
+    ``path``     – dot-separated path into the experiment metadata dict produced by
+                   ``ExperimentMetadata.extract()``, e.g. ``"problem_instance"`` or
+                   ``"description.TaskConfiguration.Scenario.Hyperparameters"``.
+    ``value``    – expected value (string equality / substring match when ``contains=True``).
+    ``contains`` – if True, the extracted value is checked with ``value in extracted``
+                   instead of strict equality.
+    ``pattern``  – alternative to ``value``: a regex pattern matched against the extracted
+                   string (takes precedence over ``value`` when set).
+    """
+    path: str
+    value: Optional[str] = None
+    contains: bool = False
+    pattern: Optional[str] = None
+
+
+@dataclass
+class AutoGroupDimension:
+    """
+    Describes one dimension used when auto-grouping (no explicit rules).
+
+    ``path``   – dot-separated path into experiment metadata (same as MatchCondition.path).
+    ``label``  – human-readable prefix used in the generated group label.
+                 Defaults to the last segment of ``path``.
+    ``transform`` – optional: ``"basename"`` strips directory components from path-like
+                    values (e.g. ``"scenarios/tsp/kroA100.tsp"`` → ``"kroA100.tsp"``).
+    """
+    path: str
+    label: Optional[str] = None
+    transform: Optional[str] = None   # "basename" | None
+
+
+@dataclass
+class CustomGroupingConfig:
+    """
+    Configuration for how experiments are grouped into legend lines within a plot.
+
+    Grouping is driven by ``auto_group_by`` dimensions. Experiments that share
+    the same extracted dimension values are placed in the same group.
+
+    A config is considered *active* (``is_configured``) when it defines at
+    least one auto-group dimension.
+    """
+    auto_group_by: List[AutoGroupDimension] = field(default_factory=list)
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.auto_group_by)
+
+@dataclass
 class BenchmarkConfig:
     """Main configuration for benchmark analysis"""
     results_folder: str
@@ -151,6 +209,7 @@ class BenchmarkConfig:
     plots: List[PlotConfig]
     table_config: TableConfig
     comparative_metrics: ComparativeMetricsConfig = field(default_factory=ComparativeMetricsConfig)
+    known_optima: Dict[str, float] = field(default_factory=dict)
 
     @staticmethod
     def _parse_metric_type(metric_description: str) -> str:
@@ -172,6 +231,15 @@ class BenchmarkConfig:
         metric_desc = metric_axis.get("metricDescription", "iterations completed")
         norm_strategy = BenchmarkConfig._parse_normalization_strategy(objective_axis.get("NormalizationStrategy", {}))
 
+        filter_conditions = BenchmarkConfig._parse_match_conditions(
+            plot_data.get("filterConditions", [])
+        )
+
+        # Per-plot grouping override (overrides global CustomGrouping for this plot)
+        plot_grouping = None
+        if "CustomGrouping" in plot_data:
+            plot_grouping = BenchmarkConfig._parse_custom_grouping(plot_data["CustomGrouping"])
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -183,7 +251,10 @@ class BenchmarkConfig:
             normalization_strategy=norm_strategy,
             objective_label=objective_axis.get("label", "Objective value"),
             objective_scale=objective_axis.get("scale", ScaleType.LINEAR.value),
-            enable_grouping=plot_data.get("enableGrouping", False)
+            enable_grouping=plot_data.get("enableGrouping", False),
+            title=plot_data.get("title"),
+            filter_conditions=filter_conditions,
+            plot_grouping=plot_grouping,
         )
 
     @staticmethod
@@ -224,7 +295,18 @@ class BenchmarkConfig:
             elif "BoxPlot" in plot_type_data:
                 plots.append(BenchmarkConfig._create_plot_config("box_plot", plot_type_data["BoxPlot"]))
 
-        comparative_metrics = BenchmarkConfig._parse_comparative_metrics(benchmark.get("ComparativeMetrics", {}))
+        # Parse KnownOptima once; forward to RegretAnalysis.optimum_per_objective
+        known_optima: Dict[str, float] = {}
+        for key, val in benchmark.get("KnownOptima", {}).items():
+            try:
+                known_optima[key] = float(val)
+            except (TypeError, ValueError):
+                pass
+
+        comparative_metrics = BenchmarkConfig._parse_comparative_metrics(
+            benchmark.get("ComparativeMetrics", {}),
+            known_optima=known_optima,
+        )
 
         return BenchmarkConfig(
             results_folder=folder,
@@ -234,12 +316,69 @@ class BenchmarkConfig:
             objectives_to_measure=experiment.get("objectivesToMeasure", []),
             plots=plots,
             table_config=table_config,
-            comparative_metrics=comparative_metrics
+            comparative_metrics=comparative_metrics,
+            known_optima=known_optima,
         )
 
     @staticmethod
-    def _parse_comparative_metrics(comp_metrics_dict: Dict[str, Any]) -> ComparativeMetricsConfig:
+    def _parse_custom_grouping(grouping_dict: Dict[str, Any]) -> Optional["CustomGroupingConfig"]:
+        """Parse a CustomGrouping block.
+
+        Returns a configured :class:`CustomGroupingConfig` when the block
+        contains ``autoGroupBy`` dimensions, or ``None`` when absent/empty.
+        An explicit ``"enabled"`` flag is not required.
+        """
+        if not grouping_dict:
+            return None
+
+        auto_dims = BenchmarkConfig._parse_auto_group_dimensions(grouping_dict.get("autoGroupBy", []))
+
+        if not auto_dims:
+            return None
+
+        return CustomGroupingConfig(auto_group_by=auto_dims)
+
+    @staticmethod
+    def _parse_match_conditions(conditions: List[Dict[str, Any]]) -> List[MatchCondition]:
+        parsed_conditions: List[MatchCondition] = []
+        for cond in conditions:
+            if not isinstance(cond, dict):
+                continue
+            parsed_conditions.append(MatchCondition(
+                path=cond.get("path", ""),
+                value=cond.get("value"),
+                contains=cond.get("contains", False),
+                pattern=cond.get("pattern"),
+            ))
+        return parsed_conditions
+
+    @staticmethod
+    def _parse_auto_group_dimensions(dimensions: List[Any]) -> List[AutoGroupDimension]:
+        parsed_dimensions: List[AutoGroupDimension] = []
+        for dim in dimensions:
+            if isinstance(dim, str):
+                parsed_dimensions.append(AutoGroupDimension(path=dim))
+                continue
+            if isinstance(dim, dict):
+                path = dim.get("path", dim.get("name", ""))
+                if not path:
+                    continue
+                parsed_dimensions.append(AutoGroupDimension(
+                    path=path,
+                    label=dim.get("label"),
+                    transform=dim.get("transform"),
+                ))
+        return parsed_dimensions
+
+    @staticmethod
+    def _parse_comparative_metrics(comp_metrics_dict: Dict[str, Any],
+                                    known_optima: Optional[Dict[str, float]] = None) -> ComparativeMetricsConfig:
         if not comp_metrics_dict:
+            # Still create a RegretAnalysisConfig if we have known_optima to forward
+            if known_optima:
+                return ComparativeMetricsConfig(
+                    regret_analysis=RegretAnalysisConfig(optimum_per_objective=known_optima)
+                )
             return ComparativeMetricsConfig()
 
         comp_table_dict = comp_metrics_dict.get("ComparativeTable", {})
@@ -247,18 +386,32 @@ class BenchmarkConfig:
             experiment=comp_table_dict.get("experiment", True),
             baseline=comp_table_dict.get("baseline", True),
             normalized_improvement=comp_table_dict.get("normalizedImprovement", True),
+            speedup_factor=comp_table_dict.get("speedupFactor", comp_table_dict.get("speedup_factor", True)),
             converged_at_iteration=comp_table_dict.get("convergedAtIteration", True),
             experiment_best=comp_table_dict.get("experimentBest", True),
             baseline_best=comp_table_dict.get("baselineBest", True),
             final_regret=comp_table_dict.get("finalRegret", False)
         ) if comp_table_dict else None
 
+        show_summary_table = comp_metrics_dict.get("showSummaryTable", comp_metrics_dict.get("show_summary_table", True))
+
         regret_dict = comp_metrics_dict.get("RegretAnalysis", {})
-        regret_config = RegretAnalysisConfig(
-            known_optimum=regret_dict.get("knownOptimum"),
-            optimum_per_objective=regret_dict.get("optimumPerObjective"),
-            regret_type=regret_dict.get("regretType", ["iteration"])
-        ) if regret_dict else None
+        if regret_dict:
+            # Explicit optimumPerObjective in RegretAnalysis wins; fall back to KnownOptima
+            explicit_per_obj = regret_dict.get("optimumPerObjective")
+            merged_per_obj = dict(known_optima or {})
+            if explicit_per_obj:
+                merged_per_obj.update(explicit_per_obj)
+            regret_config = RegretAnalysisConfig(
+                known_optimum=regret_dict.get("knownOptimum"),
+                optimum_per_objective=merged_per_obj or None,
+                regret_type=regret_dict.get("regretType", ["iteration"])
+            )
+        elif known_optima:
+            # No explicit RegretAnalysis block but KnownOptima supplied → create one
+            regret_config = RegretAnalysisConfig(optimum_per_objective=known_optima)
+        else:
+            regret_config = None
 
         normalized_dict = comp_metrics_dict.get("NormalizedImprovement", {})
         normalized_config = NormalizedImprovementConfig(
@@ -273,6 +426,7 @@ class BenchmarkConfig:
         ) if performance_dict else None
 
         return ComparativeMetricsConfig(
+            show_summary_table=show_summary_table,
             comparative_table=comp_table_config,
             regret_analysis=regret_config,
             normalized_improvement=normalized_config,

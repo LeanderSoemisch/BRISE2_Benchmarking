@@ -1,13 +1,17 @@
 import os
 import pickle
 import re
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Generator, Optional
 
+# Apply Cython __pyx_unpickle_* shims for old ConfigSpace pickles before any load
+from analyzer.util.legacy_pickle_compat import apply as _apply_legacy_compat
+_apply_legacy_compat()
 
 class ExperimentLoader:
     """Loads and groups serialized experiment files"""
 
     REPETITION_PATTERN = re.compile(r'_(\d+)$')
+    LEGACY_DUPLICATE_PATTERN = re.compile(r'(\(\d+\))+$')
 
     def __init__(self, folder: str):
         self.folder = folder
@@ -16,7 +20,6 @@ class ExperimentLoader:
         pkl_files = self._get_pkl_files()
         if not pkl_files:
             raise FileNotFoundError(f"No .pkl files found in {self.folder}")
-
         experiments = [self._load_experiment(f) for f in pkl_files]
         return self._sort_by_start_time(experiments)
 
@@ -37,28 +40,28 @@ class ExperimentLoader:
             return experiments
 
     def group_experiments(self, experiments: List[Any]) -> Dict[str, List[Any]]:
-        """Group experiments by base name without repetition index
+        """Group experiments by base name without repetition index.
 
-        Examples:
-        - exp_test_gpr_sobol_acceptableerrorbased_timebased_test_case_0
-        - exp_test_gpr_sobol_acceptableerrorbased_timebased_test_case_0_2
-        - exp_test_gpr_sobol_acceptableerrorbased_timebased_test_case_0_3
-        All grouped under: exp_test_gpr_sobol_acceptableerrorbased_timebased_test_case_0
+        Handles two naming conventions:
+        - New style: ``exp_task_..._0``, ``exp_task_..._2``  (trailing _N)
+        - Legacy style: ``exp_tsp_hh_<hash>(0)``, ``exp_tsp_hh_<hash>(0)(1)`` (trailing (N)...)
         """
-        groups = {}
+        groups: Dict[str, List[Any]] = {}
         for exp in experiments:
             name = self._get_experiment_name(exp)
             base_name = self._remove_repetition_suffix(name)
-
-            if base_name not in groups:
-                groups[base_name] = []
-            groups[base_name].append(exp)
-
+            groups.setdefault(base_name, []).append(exp)
         return groups
 
     def _get_experiment_name(self, exp: Any) -> str:
+        fname = getattr(exp, '_source_filename', None)
+        if fname and fname.endswith('.pkl'):
+            return fname[:-4]
         return getattr(exp, 'name', None) or getattr(exp, 'ed_id', None) or 'experiment'
 
     def _remove_repetition_suffix(self, name: str) -> str:
-        """Remove trailing _N where N is a number"""
+        """Remove trailing _N or (N)(M)... where N, M are integers"""
+        stripped = self.LEGACY_DUPLICATE_PATTERN.sub('', name)
+        if stripped != name:
+            return stripped
         return self.REPETITION_PATTERN.sub('', name)

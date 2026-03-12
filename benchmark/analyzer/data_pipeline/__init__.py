@@ -4,11 +4,16 @@ from analyzer.data_pipeline.experiment_loader import ExperimentLoader
 from analyzer.data_pipeline.experiment_parser import ExperimentParser
 from analyzer.data_pipeline.metric_extractor import MetricExtractor
 from analyzer.data_pipeline.data_processor import DataProcessor
+from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
+from analyzer.data_pipeline.legacy_grouper import ExperimentGrouper, LegacyExperimentGrouper
 
 __all__ = [
     'ExperimentLoader',
     'ExperimentParser',
     'MetricExtractor',
-    'DataProcessor'
+    'DataProcessor',
+    'ExperimentMetadata',
+    'ExperimentGrouper',
+    'LegacyExperimentGrouper',   # backward-compat alias
 ]
 

@@ -1,5 +1,3 @@
-import os
-import zipfile
 import logging
 from pathlib import Path
 from typing import List, Any, Dict, Optional, Tuple
@@ -8,10 +6,16 @@ import pandas as pd
 import plotly.graph_objs as go
 
 from analyzer.config import BenchmarkConfig, NormalizationType
-from analyzer.data_pipeline import (ExperimentLoader, ExperimentParser, MetricExtractor, DataProcessor)
+from analyzer.data_pipeline import (ExperimentLoader, ExperimentParser, MetricExtractor, DataProcessor,
+                                    ExperimentGrouper)
 from analyzer.visualization import (PlotGenerator, TableGenerator, ReportGenerator)
 from analyzer.visualization.comparative_plots import ComparativePlotGenerator
 from analyzer.orchestration.comparative_orchestrator import ComparativeAnalysisOrchestrator
+from analyzer.orchestration.analysis_services import (
+    ObjectivePartitionService,
+    ComparativeTableService,
+    ExportService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,8 @@ class BenchmarkAnalyzer:
         self.table_gen = TableGenerator(self.parser, self.extractor)
         self.report_gen = ReportGenerator(config, self.table_gen)
         self.comparative_plotter = ComparativePlotGenerator()
+        self.partition_service = ObjectivePartitionService(self.extractor)
+        self.export_service = ExportService()
 
         self.comparative_orchestrator = None
         if self.config.comparative_metrics.is_active():
@@ -38,32 +44,20 @@ class BenchmarkAnalyzer:
     def analyze(self, output_html: str, output_csv: str):
         """Main analysis entry point"""
         experiments = self._load_experiments()
-        objectives = self._determine_objectives(experiments)
 
-        baselines = {}
-        baseline_names = set()
-        if self.comparative_orchestrator:
-            baselines = self.comparative_orchestrator.load_baseline_experiments()
-            for baseline_result in baselines.values():
-                if hasattr(baseline_result, 'raw_experiment'):
-                    exp = baseline_result.raw_experiment
-                    name = getattr(exp, 'name', None) or getattr(exp, 'ed_id', None)
-                    if name:
-                        baseline_names.add(name)
+        baselines = self.comparative_orchestrator.load_baseline_experiments() \
+            if self.comparative_orchestrator else {}
 
-        filtered_experiments = [
-            exp for exp in experiments
-            if (getattr(exp, 'name', None) or getattr(exp, 'ed_id', None)) not in baseline_names
-        ]
+        # Experiments selected as baselines must not also appear as regular experiments
+        # (they come from the same results folder and would otherwise be counted twice).
+        filtered_experiments = self._exclude_baselines(experiments, baselines)
 
-        if baseline_names:
-            logger.info(f"Excluded {len(experiments) - len(filtered_experiments)} baseline experiment(s) from analysis")
+        # Partition experiments per objective (result key or problem instance name)
+        objective_partitions = self._partition_by_objective(filtered_experiments)
+        logger.info(f"Objectives: {list(objective_partitions.keys())}")
 
-        experiment_groups = self.loader.group_experiments(filtered_experiments)
-        logger.info(f"Grouped {len(filtered_experiments)} experiments into {len(experiment_groups)} groups")
-
-        objective_plots = self._generate_plots(filtered_experiments, experiment_groups, objectives, baselines)
-        tables_by_objective = self._build_tables(filtered_experiments, objectives)
+        objective_plots = self._generate_plots(objective_partitions, baselines)
+        tables_by_objective = self._build_tables(objective_partitions)
 
         comparative_results = {}
         comparative_plots = {}
@@ -74,11 +68,9 @@ class BenchmarkAnalyzer:
             comparative_results = self.comparative_orchestrator.compute_comparative_metrics(
                 filtered_experiments, baselines
             )
-
             if comparative_results:
                 logger.info("Generating comparative plots...")
                 comparative_plots = self._generate_comparative_plots(comparative_results)
-
                 if self.config.comparative_metrics.performance_profile is not None:
                     logger.info("Computing global performance profile...")
                     performance_profile_plot = self._generate_global_performance_profile(comparative_results)
@@ -96,48 +88,100 @@ class BenchmarkAnalyzer:
         logger.info(f"Loaded {len(experiments)} experiments")
         return experiments
 
-    def _determine_objectives(self, experiments: List[Any]) -> List[str]:
-        """Discover and filter objectives based on configuration"""
-        all_objectives = self.extractor.discover_objectives(experiments)
-        logger.info(f"Discovered objectives: {all_objectives}")
+    @staticmethod
+    def _exclude_baselines(experiments: List[Any], baselines: Dict[str, Any]) -> List[Any]:
+        """Return *experiments* with any baseline experiments removed.
 
-        if self.config.objectives_to_measure:
-            objectives = [obj for obj in self.config.objectives_to_measure if obj in all_objectives]
-            if not objectives:
-                logger.warning("None of configured objectives found. Using all discovered.")
-                objectives = sorted(list(all_objectives))
-        else:
-            objectives = sorted(list(all_objectives))
+        Experiments selected as baselines live in the same results folder.
+        Without this filter they would appear both as regular experiments and
+        as baselines, leading to double-counting in plots and tables.
+        """
+        baseline_names = {
+            getattr(bl.raw_experiment, 'name', None) or getattr(bl.raw_experiment, 'ed_id', None)
+            for bl in baselines.values()
+            if getattr(bl, 'raw_experiment', None) is not None
+        }
+        if not baseline_names:
+            return experiments
+        filtered = [e for e in experiments
+                    if (getattr(e, 'name', None) or getattr(e, 'ed_id', None)) not in baseline_names]
+        logger.info(f"Excluded {len(experiments) - len(filtered)} baseline experiment(s)")
+        return filtered
 
-        logger.info(f"Analyzing objectives: {objectives}")
-        return objectives
+    def _partition_by_objective(self, experiments: List[Any]) -> Dict[str, List[Any]]:
+        return self.partition_service.partition(self.config.objectives_to_measure, experiments)
 
-    def _generate_plots(self, experiments: List[Any], experiment_groups: Dict[str, List[Any]],
-                        objectives: List[str], baselines: Dict[str, Any] = None) -> Dict[str, List[go.Figure]]:
-        objective_plots = {}
-        if baselines is None:
-            baselines = {}
+    def _generate_plots(self, objective_partitions: Dict[str, List[Any]],
+                        baselines: Dict[str, Any]) -> Dict[str, List[go.Figure]]:
+        """Return ``{objective: [figures]}`` — one entry per report tab."""
+        objective_plots: Dict[str, List[go.Figure]] = {}
 
-        for objective in objectives:
-            figures = []
-            objective_baselines = self._filter_baselines_for_objective(baselines, objective)
-
-            for plot_config in self.config.plots:
-                if not plot_config.should_plot_objective(objective):
-                    continue
-
-                if plot_config.enable_grouping:
-                    fig = self.plotter.create_grouped_plot(objective, experiment_groups, plot_config, self.extractor, objective_baselines)
-                else:
-                    fig = self._create_improvement_plot(experiments, objective, plot_config, objective_baselines)
-
-                if fig:
-                    figures.append(fig)
-
+        for objective, experiments in objective_partitions.items():
+            obj_baselines = self._filter_baselines_for_objective(baselines, objective)
+            result_key = self._resolve_result_key(objective, experiments)
+            figures = self._make_figures(result_key, experiments, obj_baselines, objective)
             if figures:
                 objective_plots[objective] = figures
 
         return objective_plots
+
+    def _resolve_result_key(self, objective: str, experiments: List[Any]) -> str:
+        return self.partition_service.resolve_result_key(objective, experiments)
+
+    def _make_figures(self, result_key: str, experiments: List[Any],
+                      baselines: Dict[str, Any], partition_key: str = "") -> List[go.Figure]:
+        """Produce one figure per configured Plot_N block"""
+        known_optimum = self.config.known_optima.get(partition_key) if partition_key else None
+
+        figures = []
+        for plot_config in self.config.plots:
+            if not plot_config.should_plot_objective(result_key):
+                continue
+
+            plot_exps = ExperimentGrouper.filter(experiments, plot_config.filter_conditions)
+            grouping = plot_config.plot_grouping  # per-plot CustomGrouping (may be None)
+            title_suffix = self._build_plot_title_suffix(plot_config)
+
+            if plot_config.enable_grouping:
+                groups = self._build_plot_groups(plot_exps, grouping)
+                logger.info(f"  [{partition_key or result_key}] plot '{title_suffix or 'default'}': "
+                            f"{len(plot_exps)} experiments -> {len(groups)} groups")
+                fig = self.plotter.create_grouped_plot(
+                    result_key, groups, plot_config, self.extractor, baselines,
+                    title_suffix=title_suffix, known_optimum=known_optimum,
+                )
+            else:
+                fig = self._create_improvement_plot(
+                    plot_exps, result_key, plot_config, baselines,
+                    known_optimum=known_optimum, title_suffix=title_suffix,
+                )
+            if fig:
+                figures.append(fig)
+        return figures
+
+    def _build_plot_groups(self, experiments: List[Any], grouping) -> Dict[str, List[Any]]:
+        if grouping is not None and grouping.is_configured:
+            return ExperimentGrouper(grouping).group(experiments)
+        return self.loader.group_experiments(experiments)
+
+    @staticmethod
+    def _build_plot_title_suffix(plot_config) -> str:
+        """Build a human-readable title suffix from the plot's title or filter conditions.
+
+        If ``plot_config.title`` is set it is used as-is (e.g. "py.ES – Tuning Variants").
+        Otherwise, a suffix is auto-generated from any ``filterConditions``
+        (e.g. " [mh_type=py.ES]") so that filtered plots are self-describing.
+        """
+        if plot_config.title:
+            return f" – {plot_config.title}"
+        if plot_config.filter_conditions:
+            parts = [
+                f"{c.path.split('.')[-1]}={c.value}"
+                for c in plot_config.filter_conditions if c.value
+            ]
+            return f" [{', '.join(parts)}]" if parts else ""
+        return ""
+
 
     def _filter_baselines_for_objective(self, baselines: Dict[str, Any], objective: str) -> Dict[str, Any]:
         """Filter baselines to only those relevant for the current objective"""
@@ -280,7 +324,9 @@ class BenchmarkAnalyzer:
             return None
 
     def _create_improvement_plot(self, experiments: List[Any], objective: str, plot_config: Any,
-                                baselines: Dict[str, Any] = None) -> Optional[go.Figure]:
+                                baselines: Dict[str, Any] = None,
+                                known_optimum: Optional[float] = None,
+                                title_suffix: str = "") -> Optional[go.Figure]:
         names, data_series, time_series = self._extract_plot_data(experiments, objective, plot_config)
 
         if not data_series:
@@ -295,11 +341,15 @@ class BenchmarkAnalyzer:
             data_series = self.processor.normalize_series(data_series, plot_config.normalization_strategy)
 
         if plot_config.plot_type == 'box_plot':
-            return self.plotter.create_box_plot(objective, names, data_series, plot_config, normalized_baselines)
+            return self.plotter.create_box_plot(objective, names, data_series, plot_config,
+                                                normalized_baselines, known_optimum=known_optimum)
         elif plot_config.uses_time_metric():
-            return self.plotter.create_custom_plot(objective, names, data_series, time_series, plot_config, normalized_baselines)
+            return self.plotter.create_custom_plot(objective, names, data_series, time_series, plot_config,
+                                                   normalized_baselines, known_optimum=known_optimum)
         else:
-            return self.plotter.create_improvement_plot(objective, names, data_series, plot_config, normalized_baselines)
+            return self.plotter.create_improvement_plot(objective, names, data_series, plot_config,
+                                                        normalized_baselines, known_optimum=known_optimum,
+                                                        title_suffix=title_suffix)
 
     def _normalize_with_baselines(
         self,
@@ -374,136 +424,39 @@ class BenchmarkAnalyzer:
 
         return names, data_series, time_series
 
-    def _build_tables(self, experiments: List[Any], objectives: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    def _build_tables(self, objective_partitions: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
         logger.info("Building summary tables...")
         tables_by_objective = {}
-        for objective in objectives:
-            rows = self.table_gen.create_table(experiments, objective, self.config.table_config)
+        for objective, experiments in objective_partitions.items():
+            result_key = self._resolve_result_key(objective, experiments)
+            rows = self.table_gen.create_table(experiments, result_key, self.config.table_config)
             if rows:
+                if result_key != objective:
+                    for row in rows:
+                        row['Objective'] = objective
                 tables_by_objective[objective] = rows
         return tables_by_objective
 
     def _build_comparative_tables(self, comparative_results: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Build summary tables for comparative metrics.
-
-        Args:
-            comparative_results: Dictionary mapping objectives to lists of ComparisonResult objects
-
-        Returns:
-            Dictionary mapping objectives to comparative metrics table rows
-        """
-        comparative_tables = {}
         table_config = self.config.comparative_metrics.comparative_table
-
-        for objective, comparison_list in comparative_results.items():
-            if not comparison_list:
-                continue
-
-            rows = []
-            for result in comparison_list:
-                row = {}
-
-                # Add columns based on configuration
-                if not table_config or table_config.experiment:
-                    row['Experiment'] = result.display_name or result.experiment_name
-
-                if not table_config or table_config.baseline:
-                    row['Baseline'] = result.baseline_type
-
-                if (not table_config or table_config.final_regret) and result.final_regret is not None:
-                    row['Final Regret'] = f"{result.final_regret:.6f}"
-
-                if not table_config or table_config.normalized_improvement:
-                    if result.normalized_improvement is not None:
-                        row['NI (Objective)'] = f"{result.normalized_improvement:.4f}"
-                    if result.normalized_improvement_time is not None:
-                        row['NI (Time)'] = f"{result.normalized_improvement_time:.4f}"
-                    if result.normalized_improvement_iterations is not None:
-                        row['NI (Iterations)'] = f"{result.normalized_improvement_iterations:.4f}"
-
-                if result.converged_at_iteration is not None and (not table_config or table_config.converged_at_iteration):
-                    row['Converged at Iter'] = result.converged_at_iteration
-
-                minimize = (self.comparative_orchestrator.comparison_processor._is_minimizing(objective)
-                            if self.comparative_orchestrator else True)
-                if result.experiment_trajectory and (not table_config or table_config.experiment_best):
-                    # Get best value based on optimization direction
-                    exp_best = min(result.experiment_trajectory) if minimize else max(result.experiment_trajectory)
-                    row['Experiment Best'] = f"{exp_best:.6f}"
-                if result.baseline_trajectory and (not table_config or table_config.baseline_best):
-                    # Get best value based on optimization direction
-                    base_best = min(result.baseline_trajectory) if minimize else max(result.baseline_trajectory)
-                    row['Baseline Best'] = f"{base_best:.6f}"
-
-                rows.append(row)
-
-            if rows:
-                comparative_tables[objective] = rows
-
-        return comparative_tables
+        is_minimizing_fn = None
+        if self.comparative_orchestrator:
+            is_minimizing_fn = self.comparative_orchestrator.comparison_processor._is_minimizing
+        return ComparativeTableService.build(comparative_results, table_config, is_minimizing_fn)
 
     def _save_csv_files(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_csv: str) -> Tuple[
         Dict[str, str], Optional[str]]:
-        logger.info("Saving CSV files...")
-        output_dir = os.path.dirname(output_csv) or '.'
-        os.makedirs(output_dir, exist_ok=True)
-
-        self._save_combined_csv(tables_by_objective, output_csv)
-        csv_files = self._save_per_objective_csvs(tables_by_objective, output_dir)
-        zip_file = self._create_zip_archive(output_csv, csv_files, output_dir)
-
-        return csv_files, zip_file
-
-    def _save_combined_csv(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_csv: str):
-        all_rows = [row for rows in tables_by_objective.values() for row in rows]
-        df = pd.DataFrame(all_rows)
-        self._round_numeric_columns(df)
-        df.to_csv(output_csv, index=False)
-
-    def _save_per_objective_csvs(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_dir: str) -> Dict[str, str]:
-        csv_files = {}
-        for objective, rows in tables_by_objective.items():
-            df = pd.DataFrame(rows)
-            self._round_numeric_columns(df)
-            filename = f"benchmark_objective_{objective}.csv"
-            df.to_csv(os.path.join(output_dir, filename), index=False)
-            csv_files[objective] = filename
-        return csv_files
-
-    @staticmethod
-    def _round_numeric_columns(df: pd.DataFrame):
-        for col in ['Initial', 'Final best', 'Absolute improvement', 'Improvement %']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').round(6)
-
-
-    def _create_zip_archive(self, output_csv: str, csv_files: Dict[str, str], output_dir: str) -> Optional[str]:
-        logger.info("Creating ZIP archive...")
-        zip_filename = os.path.join(output_dir, "benchmark_all_tables.zip")
-
-        try:
-            with zipfile.ZipFile(zip_filename, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.write(output_csv, arcname=os.path.basename(output_csv))
-                for objective, filename in csv_files.items():
-                    zf.write(os.path.join(output_dir, filename), arcname=filename)
-            return os.path.basename(zip_filename)
-        except Exception as e:
-            logger.warning(f"ZIP creation failed: {e}")
-            return None
+        return self.export_service.save_csv_files(tables_by_objective, output_csv)
 
     def _generate_html_report(self, objective_plots, tables_by_objective, csv_files, zip_file,
                               output_html, output_csv, comparative_results=None,
                               comparative_plots=None, performance_profile_plot=None):
         logger.info("Generating HTML report...")
-
         comparative_tables = self._build_comparative_tables(comparative_results) if comparative_results else {}
-
         html_content = self.report_gen.generate(
             objective_plots, tables_by_objective, csv_files, zip_file,
             comparative_plots, comparative_tables, performance_profile_plot
         )
-
         html_path = Path(output_html)
         html_path.parent.mkdir(parents=True, exist_ok=True)
         html_path.write_text(html_content, encoding='utf-8')

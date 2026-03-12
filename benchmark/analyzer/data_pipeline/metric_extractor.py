@@ -26,14 +26,22 @@ class MetricExtractor:
 
     @staticmethod
     def extract_objective_series(exp: Any, objective: str) -> List[float]:
-        """Extract objective value series from experiment"""
-        values = []
+        """Extract best-so-far objective series from experiment (cumulative minimum)"""
+        values: List[float] = []
+        current_best: Optional[float] = None
+
         for conf in getattr(exp, 'measured_configurations', []):
             results = getattr(conf, 'results', {})
-            if objective in results:
-                val = results[objective]
-                if MetricExtractor._is_valid_numeric(val):
-                    values.append(float(val))
+            is_enabled = getattr(conf, 'is_enabled', True)
+            val = results.get(objective) if results else None
+            if val is not None and MetricExtractor._is_valid_numeric(val):
+                fval = float(val)
+                if current_best is None:
+                    current_best = fval
+                elif is_enabled and fval < current_best:
+                    current_best = fval
+                values.append(current_best)
+
         return values
 
     @staticmethod
@@ -92,12 +100,12 @@ class MetricExtractor:
         max_length = max(len(s) for s in all_series)
         padded_series = MetricExtractor._pad_series(all_series, max_length)
 
-        min_values, max_values, mean_values = MetricExtractor._compute_statistics(padded_series, max_length)
+        min_values, max_values, mean_values, std_values = MetricExtractor._compute_statistics(padded_series, max_length)
 
         metric_values = MetricExtractor._generate_metric_values(metric_type, max_length, all_time_series)
 
         return {'min_values': min_values, 'max_values': max_values, 'mean_values': mean_values,
-            'metric_values': metric_values}
+                'std_values': std_values, 'metric_values': metric_values}
 
     @staticmethod
     def _pad_series(series_list: List[List[float]], target_length: int) -> List[List[float]]:
@@ -113,22 +121,28 @@ class MetricExtractor:
 
     @staticmethod
     def _compute_statistics(series_list: List[List[float]], length: int) -> Tuple[
-        List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
-        """Compute min, max, mean at each point"""
-        min_vals, max_vals, mean_vals = [], [], []
+        List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
+        """Compute min, max, mean and std-dev at each iteration index."""
+        import math as _math
+        min_vals, max_vals, mean_vals, std_vals = [], [], [], []
 
         for i in range(length):
             values_at_i = [s[i] for s in series_list if s[i] is not None]
             if values_at_i:
+                n = len(values_at_i)
+                mean = sum(values_at_i) / n
+                variance = sum((v - mean) ** 2 for v in values_at_i) / n
                 min_vals.append(min(values_at_i))
                 max_vals.append(max(values_at_i))
-                mean_vals.append(sum(values_at_i) / len(values_at_i))
+                mean_vals.append(mean)
+                std_vals.append(_math.sqrt(variance))
             else:
                 min_vals.append(None)
                 max_vals.append(None)
                 mean_vals.append(None)
+                std_vals.append(None)
 
-        return min_vals, max_vals, mean_vals
+        return min_vals, max_vals, mean_vals, std_vals
 
     @staticmethod
     def _generate_metric_values(metric_type: str, length: int, time_series_list: List[List[Optional[float]]]) -> List[

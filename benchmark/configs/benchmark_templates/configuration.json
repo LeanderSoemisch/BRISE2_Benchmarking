@@ -1,0 +1,175 @@
+{
+  "Benchmark": {
+    "Resources": {
+      "Folder": "./results/results_generic_pc/serialized/sparse_pc_and_hh_pc/"
+    },
+    "Report": {
+      "outputDirectory": "./results/reports/generic_pc_sparse_and_hh_pc/"
+    },
+    "Experiment": {
+      "name": "Generic PC: Sparse PC and HH-PC",
+      "description": "Analysis of sparse_pc_and_hh_pc experiments. Each TSP instance is a separate report tab. Within each tab, experiments are grouped by MH type and tuning variant (S-TPE, S-BRR, H-TPE, H-BRR).",
+      "objectivesToMeasure": ["kroA100.tsp", "pla7397.tsp", "pr439.tsp", "rat783.tsp"]
+    },
+    "KnownOptima": {
+      "kroA100.tsp":  21282,
+      "pr439.tsp":    107217,
+      "rat783.tsp":   8806,
+      "pla7397.tsp":  23260728
+    },
+    "Table": {
+      "task": false,
+      "model": false,
+      "sampler": false,
+      "configurationStrategy": false,
+      "stopCondition": false,
+      "experiment": true,
+      "objective": true,
+      "iterations": true,
+      "initialValue": true,
+      "finalBestValue": true,
+      "improvementPercentage": true,
+      "improvementAbsolute": true,
+      "runtime": false
+    },
+    "Plot_0": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "mh_type",        "label": "MH" },
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_1": {
+      "PlotType": {
+        "BoxPlot": {
+          "Type": "box_plot",
+          "enableGrouping": true,
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "mh_type",        "label": "MH" },
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Group",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Final Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_2": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "py.ES: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "py.ES" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_3": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "py.SA: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "py.SA" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_4": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "j.ES: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "j.ES" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    }
+  }
+}

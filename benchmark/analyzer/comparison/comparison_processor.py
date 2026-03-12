@@ -9,6 +9,7 @@ from analyzer.comparison.comparative_metrics import (
 )
 from analyzer.comparison.baseline_manager import BaselineResult
 from analyzer.config.benchmark_config import BenchmarkConfig, OptimizationDirection
+from analyzer.util.trajectory_utils import extract_baseline_trajectory
 
 
 @dataclass
@@ -174,29 +175,13 @@ class ComparisonProcessor:
 
     @staticmethod
     def _extract_baseline_trajectory(baseline: BaselineResult, objective: str) -> List[float]:
-        if baseline.trajectory and not all(v == float('inf') for v in baseline.trajectory):
-            return baseline.trajectory
-
-        if not baseline.raw_experiment:
-            return []
-
-        measured_configs = getattr(baseline.raw_experiment, 'measured_configurations', [])
-        if not measured_configs:
-            return []
-
-        trajectory = []
-        current_best = float('inf')
-        for config in measured_configs:
-            results = getattr(config, 'averaged_result', None) or getattr(config, 'results', {})
-            if results:
-                value = results.get(objective)
-                if value is None and hasattr(results, 'keys'):
-                    value = results[list(results.keys())[0]]
-                if value is not None:
-                    current_best = min(current_best, value)
-            trajectory.append(current_best)
-
-        return trajectory
+        return extract_baseline_trajectory(
+            baseline,
+            objective,
+            prefer_cached=True,
+            best_so_far_fallback=True,
+            minimize=True,
+        )
 
     @staticmethod
     def _extract_runtime(experiment_data: Dict[str, Any]) -> Optional[float]:

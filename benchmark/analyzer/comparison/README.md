@@ -1,9 +1,5 @@
 # Comparative Analysis Module
 
-A comprehensive system for comparing optimization algorithms through interactive baseline selection, standardized metrics, and statistical analysis.
-
----
-
 ## Overview
 
 The comparative analysis module enables systematic evaluation of optimization algorithms by:
@@ -14,69 +10,7 @@ The comparative analysis module enables systematic evaluation of optimization al
 
 ---
 
-## Module Structure
-
-```
-comparison/
-├── baseline_manager.py          # Manages user-selected and cached baselines
-├── baseline_selector.py         # Persistence for baseline selection
-├── baseline_selection_server.py # Web UI for interactive selection
-├── comparison_processor.py      # Per-experiment comparisons
-├── comparative_metrics.py       # Metric calculators
-└── interactive_baseline_analyzer.py  # Orchestrates interactive workflow
-```
-
----
-
-## Core Components
-
-### 1. Interactive Baseline Selection
-
-**Purpose**: Enable user-driven baseline selection via web interface
-
-**Components**:
-- `interactive_baseline_analyzer.py`: Orchestrates the interactive workflow
-- `baseline_selection_server.py`: Serves web UI at localhost:8765
-- `baseline_selector.py`: Persists user selections to disk
-
-**Workflow**:
-1. Load all executed experiments from `.pkl` files
-2. Launch web server with experiment metadata
-3. User selects one or more experiments as baselines
-4. Save selection to `results/baseline_selection.json`
-5. Proceed with comparative analysis using selected baselines
-
-### 2. Baseline Manager (`baseline_manager.py`)
-
-**Purpose**: Manage user-selected and cached baseline experiments
-
-**Features**:
-- Register user-selected experiments as baselines
-- Retrieve baseline experiment data
-- Support multiple baselines simultaneously
-- Append "Baseline" suffix to display names
-
-### 3. Comparison Processor (`comparison_processor.py`)
-
-**Purpose**: Compare experiments against selected baselines
-
-**Features**:
-- Trajectory extraction and alignment
-- Per-baseline comparison for each objective
-- Metric computation (regret, normalized improvement in 3 variants)
-- Convergence detection
-
-**Output**: `ComparisonResult` with normalized improvement (objective, time, iterations), regret, speedup
-
-### 4. Comparative Metrics (`comparative_metrics.py`)
-
-**Purpose**: Calculate standardized performance metrics
-
-**Classes**:
-- `RegretCalculator`: Iteration-based and time-based regret
-- `NormalizedImprovementCalculator`: Three improvement variants
-- `SpeedupCalculator`: Time-to-target and iteration-to-target speedup
-- `PerformanceProfileCalculator`: Cross-problem algorithm ranking
+## Metrics
 
 **Metric Details**:
 
@@ -127,18 +61,6 @@ Where `t_p,s` is the metric value for solver `s` on problem `p`.
 ρ_s(τ) = (1/n_p) * |{p : r_p,s ≤ τ}|
 ```
 Fraction of problems where solver `s` is within factor `τ` of best.
-
-### 4. Problem Metadata Loader (`problem_metadata_loader.py`)
-
-**Purpose**: Load known optima and problem bounds
-
-**Features**:
-- JSON-based metadata files
-- Per-objective optima
-- Reference configurations
-- Best known values
-
-**Time-Based Regret**: Returns list of `(timestamp, regret)` tuples for time-series visualization.
 
 ---
 
@@ -218,7 +140,7 @@ Result: Evaluate new approach against current production performance
 1. **Objective Value Improvement**
    - Measures quality improvement
    - Range: (-∞, +∞)
-   - > 0: Better than baseline
+   - \> 0: Better than baseline
    - = 0: Same as baseline
    - < 0: Worse than baseline
 
@@ -227,14 +149,14 @@ Result: Evaluate new approach against current production performance
    - Range: (0, +∞)
    - < 1: Faster than baseline
    - = 1: Same speed as baseline
-   - > 1: Slower than baseline
+   - \> 1: Slower than baseline
 
 3. **Iteration-to-Target Speedup**
    - Measures iteration efficiency
    - Range: (0, +∞)
    - < 1: Fewer iterations than baseline
    - = 1: Same iterations as baseline
-   - > 1: More iterations than baseline
+   - \> 1: More iterations than baseline
 
 **Configuration**:
 ```json
@@ -416,17 +338,3 @@ test_case_0   grid-search   1.65      -0.01      -3.38      27         0.36     
 ## Further Reading
 
 - **[Main README](../README.md)**: Overall benchmark documentation
-
----
-
-## Contributing
-
-When extending comparative analysis:
-
-1. Add new metric to `comparative_metrics.py`
-2. Update `ComparisonResult` dataclass
-3. Integrate in `comparison_processor.py`
-4. Add visualization in `comparative_plots.py`
-5. Update configuration in `benchmark_config.py`
-6. Document in this README
-
