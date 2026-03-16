@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 _APPLIED = False
 
+
 def _reconstruct_categorical(cls, state: tuple) -> Any:
     """Reconstruct CategoricalHyperparameter from old Cython tuple state."""
     import ConfigSpace.hyperparameters as csh
@@ -126,6 +127,7 @@ _RECONSTRUCTORS = {
     'EqualsCondition': _reconstruct_equals_condition,
 }
 
+
 def _make_pyx_unpickle(cls_attr_name: str):
     """
     Return a ``__pyx_unpickle_<ClassName>`` shim compatible with legacy reducers.
@@ -148,7 +150,7 @@ def _make_pyx_unpickle(cls_attr_name: str):
         state = args[-1] if len(args) > 1 else None
 
         if state is not None:
-            # State was passed directly – uncommon but handle it
+            # State was passed directly - uncommon but handle it
             if reconstructor and isinstance(state, tuple):
                 return reconstructor(cls, state)
             obj = cls.__new__(cls)
@@ -168,10 +170,10 @@ def _make_pyx_unpickle(cls_attr_name: str):
             # tuple BUILD call and reconstruct properly.
             def _tuple_aware_setstate(tuple_state, _cls=cls, _recon=reconstructor):
                 # Replace self (obj) with a fully initialized instance.
-                # We can't swap obj in-place since it's already on the pickle stack,
+                # We cannot swap obj in-place since it's already on the pickle stack,
                 # so we copy the __dict__ of the new instance into obj.
                 if isinstance(tuple_state, dict):
-                    # New format – delegate to normal __setstate__
+                    # New format - delegate to normal __setstate__
                     if callable(cls_setstate):
                         cls_setstate(obj, tuple_state)
                     else:
@@ -199,34 +201,35 @@ def _make_pyx_unpickle(cls_attr_name: str):
 
 
 _PATCH_MAP = {
-    "ConfigSpace.hyperparameters": [
-        ("__pyx_unpickle_CategoricalHyperparameter",    "CategoricalHyperparameter"),
-        ("__pyx_unpickle_UniformIntegerHyperparameter", "UniformIntegerHyperparameter"),
-        ("__pyx_unpickle_UniformFloatHyperparameter",   "UniformFloatHyperparameter"),
-        ("__pyx_unpickle_NormalIntegerHyperparameter",  "NormalIntegerHyperparameter"),
-        ("__pyx_unpickle_NormalFloatHyperparameter",    "NormalFloatHyperparameter"),
-        ("__pyx_unpickle_OrdinalHyperparameter",        "OrdinalHyperparameter"),
-        ("__pyx_unpickle_UnParametrizedHyperparameter", "UnParametrizedHyperparameter"),
+    'ConfigSpace.hyperparameters': [
+        ('__pyx_unpickle_CategoricalHyperparameter', 'CategoricalHyperparameter'),
+        ('__pyx_unpickle_UniformIntegerHyperparameter', 'UniformIntegerHyperparameter'),
+        ('__pyx_unpickle_UniformFloatHyperparameter', 'UniformFloatHyperparameter'),
+        ('__pyx_unpickle_NormalIntegerHyperparameter', 'NormalIntegerHyperparameter'),
+        ('__pyx_unpickle_NormalFloatHyperparameter', 'NormalFloatHyperparameter'),
+        ('__pyx_unpickle_OrdinalHyperparameter', 'OrdinalHyperparameter'),
+        ('__pyx_unpickle_UnParametrizedHyperparameter', 'UnParametrizedHyperparameter'),
     ],
-    "ConfigSpace.conditions": [
-        ("__pyx_unpickle_EqualsCondition",       "EqualsCondition"),
-        ("__pyx_unpickle_NotEqualsCondition",    "NotEqualsCondition"),
-        ("__pyx_unpickle_GreaterThanCondition",  "GreaterThanCondition"),
-        ("__pyx_unpickle_LessThanCondition",     "LessThanCondition"),
-        ("__pyx_unpickle_InCondition",           "InCondition"),
-        ("__pyx_unpickle_AndConjunction",        "AndConjunction"),
-        ("__pyx_unpickle_OrConjunction",         "OrConjunction"),
+    'ConfigSpace.conditions': [
+        ('__pyx_unpickle_EqualsCondition', 'EqualsCondition'),
+        ('__pyx_unpickle_NotEqualsCondition', 'NotEqualsCondition'),
+        ('__pyx_unpickle_GreaterThanCondition', 'GreaterThanCondition'),
+        ('__pyx_unpickle_LessThanCondition', 'LessThanCondition'),
+        ('__pyx_unpickle_InCondition', 'InCondition'),
+        ('__pyx_unpickle_AndConjunction', 'AndConjunction'),
+        ('__pyx_unpickle_OrConjunction', 'OrConjunction'),
     ],
-    "ConfigSpace.forbidden": [
-        ("__pyx_unpickle_ForbiddenEqualsClause",     "ForbiddenEqualsClause"),
-        ("__pyx_unpickle_ForbiddenInClause",         "ForbiddenInClause"),
-        ("__pyx_unpickle_ForbiddenAndConjunction",   "ForbiddenAndConjunction"),
+    'ConfigSpace.forbidden': [
+        ('__pyx_unpickle_ForbiddenEqualsClause', 'ForbiddenEqualsClause'),
+        ('__pyx_unpickle_ForbiddenInClause', 'ForbiddenInClause'),
+        ('__pyx_unpickle_ForbiddenAndConjunction', 'ForbiddenAndConjunction'),
     ],
-    "ConfigSpace.configuration_space": [
-        ("__pyx_unpickle_ConfigurationSpace", "ConfigurationSpace"),
-        ("__pyx_unpickle_Configuration",      "Configuration"),
+    'ConfigSpace.configuration_space': [
+        ('__pyx_unpickle_ConfigurationSpace', 'ConfigurationSpace'),
+        ('__pyx_unpickle_Configuration', 'Configuration'),
     ],
 }
+
 
 def apply() -> None:
     """
@@ -238,10 +241,10 @@ def apply() -> None:
     if _APPLIED:
         return
 
-    import sys
     import importlib
+    import sys
 
-    patched: list = []
+    patched = []
 
     for module_fqn, entries in _PATCH_MAP.items():
         try:

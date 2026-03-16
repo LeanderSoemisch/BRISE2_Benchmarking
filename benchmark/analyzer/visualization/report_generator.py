@@ -21,7 +21,8 @@ class ReportGenerator:
                  zip_file: Optional[str],
                  comparative_plots: Optional[Dict[str, List[go.Figure]]] = None,
                  comparative_tables: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-                 performance_profile_plot: Optional[go.Figure] = None) -> str:
+                 performance_profile_plot: Optional[go.Figure] = None,
+                 comparative_csv_files: Optional[Dict[str, str]] = None) -> str:
         """Generate complete HTML report. One tab per objective."""
         tab_buttons: List[str] = []
         tab_contents: List[str] = []
@@ -34,6 +35,7 @@ class ReportGenerator:
                 objective, figures, table_data, csv_files, tab_id, idx == 0,
                 (comparative_plots or {}).get(objective, []),
                 (comparative_tables or {}).get(objective, []),
+                (comparative_csv_files or {}),
             ))
 
         # Performance Profile tab
@@ -67,12 +69,19 @@ class ReportGenerator:
                      table_data: Dict[str, List[Dict[str, Any]]],
                      csv_files: Dict[str, str], tab_id: str, is_active: bool,
                      comp_figures: List[go.Figure],
-                     comp_table_rows: List[Dict[str, Any]]) -> str:
+                     comp_table_rows: List[Dict[str, Any]],
+                     comparative_csv_files: Dict[str, str]) -> str:
         parts = [f"<div id='{tab_id}' class='tab-content' "
                  f"style='display:{'block' if is_active else 'none'}'>",
                  self._render_figures(objective, figures, tab_id)]
         if comp_figures or comp_table_rows:
-            parts.append(self._comparative_section(objective, comp_figures, comp_table_rows, tab_id))
+            parts.append(self._comparative_section(
+                objective,
+                comp_figures,
+                comp_table_rows,
+                comparative_csv_files,
+                tab_id,
+            ))
         parts.append(self._csv_download(objective, csv_files))
         parts.append(f"<div class='table-wrapper'>"
                      f"{self.table_generator.format_table(table_data.get(objective, []), self.config.table_config)}"
@@ -91,7 +100,8 @@ class ReportGenerator:
                 f"</div></div>")
 
     def _comparative_section(self, objective: str, figures: List[go.Figure],
-                              table_rows: List[Dict[str, Any]], tab_id: str) -> str:
+                              table_rows: List[Dict[str, Any]],
+                              comparative_csv_files: Dict[str, str], tab_id: str) -> str:
         parts = ["<div class='comparative-section'>"]
         for i, fig in enumerate(figures):
             plot_id = f"comp_plot_{tab_id}_{i}"
@@ -103,6 +113,11 @@ class ReportGenerator:
                 f"</div>"
             )
         if table_rows and self._show_comparative_table():
+            parts.append(self._csv_download(
+                objective,
+                comparative_csv_files,
+                link_text=f"Download Comparative {objective} CSV",
+            ))
             parts.append(self.table_generator.format_comparative_table(table_rows))
         parts.append("</div>")
         return "".join(parts)
@@ -126,12 +141,13 @@ class ReportGenerator:
         return f"<button class='tab-btn {active_class}' onclick=showTab('{tab_id}',this)>{label}</button>"
 
     @staticmethod
-    def _csv_download(objective: str, csv_files: Dict[str, str]) -> str:
+    def _csv_download(objective: str, csv_files: Dict[str, str], link_text: Optional[str] = None) -> str:
         fname = csv_files.get(objective, "")
         if not fname:
             return ""
+        text = link_text or f"Download {objective} CSV"
         return (f"<div class='download-row'>"
-                f"<a class='download-link' href='{fname}' download>Download {objective} CSV</a>"
+                f"<a class='download-link' href='{fname}' download>{text}</a>"
                 f"</div>")
 
     @staticmethod

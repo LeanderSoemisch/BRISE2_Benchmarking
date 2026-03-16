@@ -4,10 +4,14 @@ import plotly.graph_objs as go
 
 from analyzer.comparison.comparison_processor import ComparisonResult
 from analyzer.config.benchmark_config import Constants
+from analyzer.data_pipeline import ExperimentParser
 
 
 class ComparativePlotGenerator:
     """Generator for comparative analysis plots"""
+
+    def __init__(self):
+        self.parser = ExperimentParser()
 
     def plot_regret_curves(
         self,
@@ -75,7 +79,8 @@ class ComparativePlotGenerator:
         for result in comparison_results:
             value = getattr(result, attr_name, None)
             if value is not None:
-                experiment_names.append(result.display_name or result.experiment_name)
+                exp_name = result.display_name or result.experiment_name
+                experiment_names.append(self.parser.build_display_name(exp_name))
                 improvements.append(value)
                 baseline_types.append(result.baseline_type)
 
@@ -100,27 +105,55 @@ class ComparativePlotGenerator:
                 for val in aligned_y
             ]
 
+            baseline_label = self.parser.build_display_name(baseline_type)
             traces.append(go.Bar(
                 x=ordered_experiments,
                 y=aligned_y,
-                name=f"vs {baseline_type}",
+                name=f"vs {baseline_label}",
                 marker=dict(color=color, line=dict(color=color, width=1)),
                 text=text_labels,
                 textposition='outside',
                 textfont=dict(size=12, color='#2c3e50'),
                 offsetgroup=str(idx),
+                cliponaxis=False,
             ))
 
-        all_improvements = [v for v in improvements if v is not None]
-        y_max = max(2.0, max(all_improvements))
-        y_axis_max = y_max + max(0.3, y_max * 0.2)
+        if is_ratio_based and ordered_experiments:
+            traces.append(go.Scatter(
+                x=ordered_experiments,
+                y=[1.0] * len(ordered_experiments),
+                mode='lines',
+                line=dict(color='#7f8c8d', dash='dot', width=1.2),
+                hoverinfo='skip',
+                showlegend=False,
+            ))
+
+        finite_vals = [v for v in improvements if v is not None and np.isfinite(v)]
+        min_val, max_val = min(finite_vals), max(finite_vals)
+        if is_ratio_based:
+            center = 1.0
+            span = max(abs(min_val - center), abs(max_val - center), 0.2)
+            y_min = max(0.0, center - 1.2 * span)
+            y_max = center + 1.2 * span
+        else:
+            center = 0.0
+            span = max(abs(min_val - center), abs(max_val - center), 0.1)
+            y_min = center - 1.2 * span
+            y_max = center + 1.2 * span
+
+        data_pad = 0.1 * (max_val - min_val) if max_val != min_val else 0.1 * (abs(max_val) if max_val != 0 else 1.0)
+        min(y_min, min_val - data_pad)
+        y_max = max(y_max, max_val + data_pad)
+
+        y_axis_min = 0.0
 
         layout = dict(
             title=title,
-            xaxis=dict(title='Experiment', tickangle=45),
+            xaxis=dict(title='Experiment', tickangle=45, automargin=True),
             yaxis=dict(
                 title='Speedup Factor' if is_ratio_based else 'Normalized Improvement',
-                range=[0, y_axis_max],
+                range=[y_axis_min, y_max],
+                automargin=True,
             ),
             barmode='group',
             bargap=0.2,
@@ -129,7 +162,7 @@ class ComparativePlotGenerator:
             legend=dict(
                 orientation='v', yanchor='top', y=1, xanchor='right', x=1.15,
             ),
-            margin=dict(l=60, r=160, t=80, b=150),
+            margin=dict(l=70, r=140, t=80, b=170),
         )
 
         return go.Figure(data=traces, layout=layout)

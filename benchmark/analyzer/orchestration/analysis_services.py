@@ -65,6 +65,9 @@ class ComparativeTableService:
         table_config: Any,
         is_minimizing_fn: Optional[Any] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
+        from analyzer.data_pipeline import ExperimentParser
+
+        parser = ExperimentParser()
         comparative_tables: Dict[str, List[Dict[str, Any]]] = {}
 
         for objective, comparison_list in comparative_results.items():
@@ -78,7 +81,7 @@ class ComparativeTableService:
                 if not table_config or table_config.experiment:
                     row['Experiment'] = result.display_name or result.experiment_name
                 if not table_config or table_config.baseline:
-                    row['Baseline'] = result.baseline_type
+                    row['Baseline'] = parser.build_display_name(result.baseline_type)
                 if (not table_config or table_config.final_regret) and result.final_regret is not None:
                     row['Final Regret'] = f"{result.final_regret:.6f}"
 
@@ -112,15 +115,36 @@ class ComparativeTableService:
 class ExportService:
     NUMERIC_COLUMNS = ['Initial', 'Final best', 'Absolute improvement', 'Improvement %']
 
-    def save_csv_files(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_csv: str) -> Tuple[Dict[str, str], Optional[str]]:
+    def save_csv_files(
+        self,
+        tables_by_objective: Dict[str, List[Dict[str, Any]]],
+        output_csv: str,
+        comparative_tables_by_objective: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> Tuple[Dict[str, str], Dict[str, str], Optional[str]]:
         logger.info("Saving CSV files...")
         output_dir = os.path.dirname(output_csv) or '.'
         os.makedirs(output_dir, exist_ok=True)
 
         self._save_combined_csv(tables_by_objective, output_csv)
-        csv_files = self._save_per_objective_csvs(tables_by_objective, output_dir)
-        zip_file = self._create_zip_archive(output_csv, csv_files, output_dir)
-        return csv_files, zip_file
+        csv_files = self._save_per_objective_csvs(
+            tables_by_objective,
+            output_dir,
+            filename_template="benchmark_objective_{objective}.csv",
+        )
+        comparative_csv_files: Dict[str, str] = {}
+        if comparative_tables_by_objective:
+            comparative_csv_files = self._save_per_objective_csvs(
+                comparative_tables_by_objective,
+                output_dir,
+                filename_template="benchmark_comparative_{objective}.csv",
+            )
+
+        zip_file = self._create_zip_archive(
+            output_csv,
+            list(csv_files.values()) + list(comparative_csv_files.values()),
+            output_dir,
+        )
+        return csv_files, comparative_csv_files, zip_file
 
     def _save_combined_csv(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_csv: str):
         all_rows = [row for rows in tables_by_objective.values() for row in rows]
@@ -128,12 +152,17 @@ class ExportService:
         self._round_numeric_columns(df)
         df.to_csv(output_csv, index=False)
 
-    def _save_per_objective_csvs(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_dir: str) -> Dict[str, str]:
+    def _save_per_objective_csvs(
+        self,
+        tables_by_objective: Dict[str, List[Dict[str, Any]]],
+        output_dir: str,
+        filename_template: str,
+    ) -> Dict[str, str]:
         csv_files: Dict[str, str] = {}
         for objective, rows in tables_by_objective.items():
             df = pd.DataFrame(rows)
             self._round_numeric_columns(df)
-            filename = f"benchmark_objective_{objective}.csv"
+            filename = filename_template.format(objective=objective)
             df.to_csv(os.path.join(output_dir, filename), index=False)
             csv_files[objective] = filename
         return csv_files
@@ -145,14 +174,14 @@ class ExportService:
                 df[col] = pd.to_numeric(df[col], errors='coerce').round(6)
 
     @staticmethod
-    def _create_zip_archive(output_csv: str, csv_files: Dict[str, str], output_dir: str) -> Optional[str]:
+    def _create_zip_archive(output_csv: str, csv_filenames: List[str], output_dir: str) -> Optional[str]:
         logger.info("Creating ZIP archive...")
         zip_filename = os.path.join(output_dir, "benchmark_all_tables.zip")
 
         try:
             with zipfile.ZipFile(zip_filename, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.write(output_csv, arcname=os.path.basename(output_csv))
-                for filename in csv_files.values():
+                for filename in csv_filenames:
                     zf.write(os.path.join(output_dir, filename), arcname=filename)
             return os.path.basename(zip_filename)
         except Exception as e:

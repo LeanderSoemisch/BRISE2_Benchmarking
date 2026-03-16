@@ -61,6 +61,7 @@ class BenchmarkAnalyzer:
 
         comparative_results = {}
         comparative_plots = {}
+        comparative_tables = {}
         performance_profile_plot = None
 
         if self.comparative_orchestrator and self.config.comparative_metrics.is_active():
@@ -71,15 +72,28 @@ class BenchmarkAnalyzer:
             if comparative_results:
                 logger.info("Generating comparative plots...")
                 comparative_plots = self._generate_comparative_plots(comparative_results)
+                comparative_tables = self._build_comparative_tables(comparative_results)
                 if self.config.comparative_metrics.performance_profile is not None:
                     logger.info("Computing global performance profile...")
                     performance_profile_plot = self._generate_global_performance_profile(comparative_results)
 
-        csv_files, zip_file = self._save_csv_files(tables_by_objective, output_csv)
+        csv_files, comparative_csv_files, zip_file = self._save_csv_files(
+            tables_by_objective,
+            comparative_tables,
+            output_csv,
+        )
         self._generate_html_report(
-            objective_plots, tables_by_objective, csv_files, zip_file,
-            output_html, output_csv, comparative_results, comparative_plots,
-            performance_profile_plot
+            objective_plots=objective_plots,
+            tables_by_objective=tables_by_objective,
+            csv_files=csv_files,
+            comparative_csv_files=comparative_csv_files,
+            zip_file=zip_file,
+            output_html=output_html,
+            output_csv=output_csv,
+            comparative_results=comparative_results,
+            comparative_plots=comparative_plots,
+            comparative_tables=comparative_tables,
+            performance_profile_plot=performance_profile_plot,
         )
 
     def _load_experiments(self) -> List[Any]:
@@ -263,7 +277,7 @@ class BenchmarkAnalyzer:
                 test_case_performance[test_case_name].setdefault(objective, best_exp_value)
 
                 if result.baseline_trajectory and result.baseline_type:
-                    baseline_name = result.baseline_type.replace('_', '-')
+                    baseline_name = self.parser.build_display_name(result.baseline_type)
                     baseline_performance.setdefault(baseline_name, {})
                     baseline_performance[baseline_name].setdefault(objective, min(result.baseline_trajectory))
 
@@ -444,18 +458,23 @@ class BenchmarkAnalyzer:
             is_minimizing_fn = self.comparative_orchestrator.comparison_processor._is_minimizing
         return ComparativeTableService.build(comparative_results, table_config, is_minimizing_fn)
 
-    def _save_csv_files(self, tables_by_objective: Dict[str, List[Dict[str, Any]]], output_csv: str) -> Tuple[
-        Dict[str, str], Optional[str]]:
-        return self.export_service.save_csv_files(tables_by_objective, output_csv)
+    def _save_csv_files(
+        self,
+        tables_by_objective: Dict[str, List[Dict[str, Any]]],
+        comparative_tables: Dict[str, List[Dict[str, Any]]],
+        output_csv: str,
+    ) -> Tuple[Dict[str, str], Dict[str, str], Optional[str]]:
+        return self.export_service.save_csv_files(tables_by_objective, output_csv, comparative_tables)
 
-    def _generate_html_report(self, objective_plots, tables_by_objective, csv_files, zip_file,
+    def _generate_html_report(self, objective_plots, tables_by_objective, csv_files, comparative_csv_files, zip_file,
                               output_html, output_csv, comparative_results=None,
-                              comparative_plots=None, performance_profile_plot=None):
+                              comparative_plots=None, comparative_tables=None,
+                              performance_profile_plot=None):
         logger.info("Generating HTML report...")
-        comparative_tables = self._build_comparative_tables(comparative_results) if comparative_results else {}
         html_content = self.report_gen.generate(
             objective_plots, tables_by_objective, csv_files, zip_file,
-            comparative_plots, comparative_tables, performance_profile_plot
+            comparative_plots, comparative_tables or {}, performance_profile_plot,
+            comparative_csv_files=comparative_csv_files,
         )
         html_path = Path(output_html)
         html_path.parent.mkdir(parents=True, exist_ok=True)

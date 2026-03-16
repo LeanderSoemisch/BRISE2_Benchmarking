@@ -12,10 +12,10 @@
       "objectivesToMeasure": ["kroA100.tsp", "pla7397.tsp", "pr439.tsp", "rat783.tsp"]
     },
     "KnownOptima": {
-      "kroA100.tsp":  21282,
-      "pr439.tsp":    107217,
-      "rat783.tsp":   8806,
-      "pla7397.tsp":  23260728
+      "kroA100.tsp": 21282,
+      "pr439.tsp": 107217,
+      "rat783.tsp": 8806,
+      "pla7397.tsp": 23260728
     },
     "Table": {
       "task": false,
@@ -39,7 +39,7 @@
           "enableGrouping": true,
           "CustomGrouping": {
             "autoGroupBy": [
-              { "path": "mh_type",        "label": "MH" },
+              { "path": "mh_type", "label": "MH" },
               { "path": "tuning_variant", "label": "variant" }
             ]
           },
@@ -65,7 +65,7 @@
           "enableGrouping": true,
           "CustomGrouping": {
             "autoGroupBy": [
-              { "path": "mh_type",        "label": "MH" },
+              { "path": "mh_type", "label": "MH" },
               { "path": "tuning_variant", "label": "variant" }
             ]
           },
@@ -173,3 +173,4 @@
     }
   }
 }
+
