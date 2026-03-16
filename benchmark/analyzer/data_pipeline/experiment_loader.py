@@ -1,12 +1,13 @@
 import os
 import pickle
 import re
-from typing import List, Any, Dict, Generator
+from typing import List, Any, Dict
 
 # Apply Cython __pyx_unpickle_* shims for old ConfigSpace pickles before any load
 from analyzer.util.legacy_pickle_compat import apply as _apply_legacy_compat
 
 _apply_legacy_compat()
+
 
 class ExperimentLoader:
     """Loads and groups serialized experiment files"""
@@ -18,23 +19,11 @@ class ExperimentLoader:
         self.folder = folder
 
     def load_all_experiments(self) -> List[Any]:
-        experiments: List[Any] = []
-        for batch in self.iter_experiment_batches():
-            experiments.extend(batch)
-        return self._sort_by_start_time(experiments)
-
-    def iter_experiment_batches(self, batch_size: int = 50) -> Generator[List[Any], None, None]:
         pkl_files = self._get_pkl_files()
         if not pkl_files:
             raise FileNotFoundError(f"No .pkl files found in {self.folder}")
-        batch: List[Any] = []
-        for filename in pkl_files:
-            batch.append(self._load_experiment(filename))
-            if len(batch) >= batch_size:
-                yield self._sort_by_start_time(batch)
-                batch = []
-        if batch:
-            yield self._sort_by_start_time(batch)
+        experiments = [self._load_experiment(f) for f in pkl_files]
+        return self._sort_by_start_time(experiments)
 
     def _get_pkl_files(self) -> List[str]:
         return sorted(f for f in os.listdir(self.folder) if f.endswith('.pkl'))

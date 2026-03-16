@@ -1,14 +1,14 @@
 {
   "Benchmark": {
     "Resources": {
-      "Folder": "./results/results_generic_pc/serialized/full_benchmark_adapted/"
+      "Folder": "./results/results_generic_pc/serialized/sparse_pc_and_hh_pc/"
     },
     "Report": {
-      "outputDirectory": "./results/reports/"
+      "outputDirectory": "./results/reports/generic_pc_sparse_and_hh_pc/"
     },
     "Experiment": {
       "name": "Generic PC: Sparse PC and HH-PC",
-      "description": "Analysis of full_benchmark experiment results. Each TSP instance is a separate report tab.",
+      "description": "Analysis of sparse_pc_and_hh_pc experiments. Each TSP instance is a separate report tab. Within each tab, experiments are grouped by MH type and tuning variant (S-TPE, S-BRR, H-TPE, H-BRR).",
       "objectivesToMeasure": ["kroA100.tsp", "pla7397.tsp", "pr439.tsp", "rat783.tsp"]
     },
     "KnownOptima": {
@@ -23,37 +23,24 @@
       "sampler": false,
       "configurationStrategy": false,
       "stopCondition": false,
-      "experiment": false,
-      "objective": false,
-      "iterations": false,
-      "initialValue": false,
-      "finalBestValue": false,
-      "improvementPercentage": false,
-      "improvementAbsolute": false,
+      "experiment": true,
+      "objective": true,
+      "iterations": true,
+      "initialValue": true,
+      "finalBestValue": true,
+      "improvementPercentage": true,
+      "improvementAbsolute": true,
       "runtime": false
     },
     "Plot_0": {
       "PlotType": {
-        "ConvergencePlot": {
-          "Type": "convergence_plot",
+        "ImprovementPlot": {
+          "Type": "improvement_plot",
           "enableGrouping": true,
-          "title": "Tour Length Convergence by HH-PC Variant",
-          "filterConditions": [
-            { "path": "hhpc_variant", "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR" }
-          ],
           "CustomGrouping": {
-            "valueGroups": [
-              {
-                "path": "hhpc_variant",
-                "groups": [
-                  { "value": "S-TPE",        "displayName": "S-TPE" },
-                  { "value": "S-BRR",        "displayName": "S-BRR" },
-                  { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
-                  { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
-                  { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
-                  { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
-                ]
-              }
+            "autoGroupBy": [
+              { "path": "mh_type", "label": "MH" },
+              { "path": "tuning_variant", "label": "variant" }
             ]
           },
           "MetricAxis": {
@@ -76,23 +63,10 @@
         "BoxPlot": {
           "Type": "box_plot",
           "enableGrouping": true,
-          "title": "Final Tour Length by HH-PC Variant",
-          "filterConditions": [
-            { "path": "hhpc_variant", "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR" }
-          ],
           "CustomGrouping": {
-            "valueGroups": [
-              {
-                "path": "hhpc_variant",
-                "groups": [
-                  { "value": "S-TPE",        "displayName": "S-TPE" },
-                  { "value": "S-BRR",        "displayName": "S-BRR" },
-                  { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
-                  { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
-                  { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
-                  { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
-                ]
-              }
+            "autoGroupBy": [
+              { "path": "mh_type", "label": "MH" },
+              { "path": "tuning_variant", "label": "variant" }
             ]
           },
           "MetricAxis": {
@@ -110,33 +84,91 @@
         }
       }
     },
-    "ComparativeAnalysis": {
-      "ComparativeTable": {
-        "experiment": true,
-        "baseline": true,
-        "relativeImprovement": true,
-        "convergedAtIteration": true,
-        "experimentBest": true,
-        "baselineBest": true,
-        "finalRegret": true
-      },
-      "RegretAnalysis": {
-        "RegretType": {
-          "Iteration": {"Type": "iteration"},
-          "Time": {"Type": "time"}
+    "Plot_2": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "py.ES: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "py.ES" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
         }
-      },
-      "RelativeImprovement": {
-        "ImprovementType": {
-          "ObjectiveValue": {"Type": "objective_value"},
-          "TimeToTarget": {"Type": "time_to_target"},
-          "IterationToTarget": {"Type": "iteration_to_target"}
+      }
+    },
+    "Plot_3": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "py.SA: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "py.SA" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
         }
-      },
-      "PerformanceProfile": {
-        "tauMax": 5.0,
-        "tauSteps": 50,
-        "objectivesToProfile": ["kroA100.tsp", "pla7397.tsp", "pr439.tsp", "rat783.tsp"]
+      }
+    },
+    "Plot_4": {
+      "PlotType": {
+        "ImprovementPlot": {
+          "title": "j.ES: Tuning Variants",
+          "Type": "improvement_plot",
+          "enableGrouping": true,
+          "filterConditions": [
+            { "path": "mh_type", "value": "j.ES" }
+          ],
+          "CustomGrouping": {
+            "autoGroupBy": [
+              { "path": "tuning_variant", "label": "variant" }
+            ]
+          },
+          "MetricAxis": {
+            "metricDescription": "iterations completed",
+            "label": "Iteration",
+            "scale": "linear"
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
       }
     }
   }
