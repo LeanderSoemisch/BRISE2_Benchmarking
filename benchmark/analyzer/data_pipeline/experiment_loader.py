@@ -3,6 +3,11 @@ import pickle
 import re
 from typing import List, Any, Dict
 
+# Apply Cython __pyx_unpickle_* shims for old ConfigSpace pickles before any load
+from analyzer.util.legacy_pickle_compat import apply as _apply_legacy_compat
+
+_apply_legacy_compat()
+
 
 class ExperimentLoader:
     """Loads and groups serialized experiment files"""
