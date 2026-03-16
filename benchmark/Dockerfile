@@ -33,4 +33,9 @@ RUN chown --recursive benchmark_user:benchmark_user .
 USER benchmark_user
 
 RUN echo "conda activate brise-260" >> ~/.bashrc
-CMD conda run -n brise-260 python3 ./orchestrate_benchmark.py $MODE
+
+# The container only runs the benchmark (filling experiment dumps) and then
+# exits. The analysis pipeline runs on the host afterwards (see init.sh `up`),
+# where the interactive baseline-selection UI can actually open a browser -
+# webbrowser.open() is a no-op inside this headless container.
+CMD conda run --no-capture-output -n brise-260 python3 -u ./orchestrate_benchmark.py --mode benchmark --skip-analyzer
