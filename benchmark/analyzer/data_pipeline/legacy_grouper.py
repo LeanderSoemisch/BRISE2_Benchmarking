@@ -35,7 +35,6 @@ class ExperimentGrouper:
             )
         ]
 
-
     @staticmethod
     def _condition_matches(meta: Dict[str, Any], cond: MatchCondition) -> bool:
         extracted = ExperimentMetadata.get(meta, cond.path)

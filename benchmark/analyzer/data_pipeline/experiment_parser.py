@@ -7,8 +7,13 @@ class ExperimentParser:
 
     PATTERN_WITH_TEST_CASE = re.compile(
         r'^exp_([^_]+)_([^_]+)_([^_]+)_([^_]+)_([^_]+)_test_case_(\d+)(?:_(.+?))?(?:_(\d+))?$')
+    PATTERN_BASELINE = re.compile(
+        r'^exp_([^_]+)_([^_]+)_([^_]+)_([^_]+)_([^_]+)_baseline_([^_]+(?:-[^_]+)*)(?:_(\d+))?$'
+    )
     PATTERN_WITHOUT_TEST_CASE = re.compile(r'^exp_([^_]+)_([^_]+)_([^_]+)_([^_]+)_([^_]+?)(?:_(\d+))?$')
     TEST_CASE_PATTERN = re.compile(r'(test_case_\d+(?:_[a-zA-Z_]+)?)')
+    BASELINE_SUFFIX_PATTERN = re.compile(r'_baseline_([^_]+(?:-[^_]+)*)(?:_\d+)?$')
+    BASELINE_PREFIX_PATTERN = re.compile(r'^baseline_([^_]+(?:-[^_]+)*)$')
 
     @staticmethod
     def _empty_features() -> Dict[str, Any]:
@@ -56,6 +61,17 @@ class ExperimentParser:
             elif middle_part and not last_part and middle_part.isdigit():
                 features['Index'] = int(middle_part)
 
+            return features
+
+        match = self.PATTERN_BASELINE.match(raw_name)
+        if match:
+            features['Task'] = match.group(1)
+            features['Model'] = match.group(2)
+            features['Sampler'] = match.group(3)
+            features['ConfigurationStrategy'] = match.group(4)
+            features['StopCondition'] = match.group(5)
+            if match.group(7):
+                features['Index'] = int(match.group(7))
             return features
 
         match = self.PATTERN_WITHOUT_TEST_CASE.match(raw_name)
@@ -128,5 +144,19 @@ class ExperimentParser:
         - exp_test_gpr_sobol_quantitybased_timebased_test_case_0 -> test_case_0
         - exp_test_gpr_sobol_quantitybased_timebased_test_case_2_wo_dch_2 -> test_case_2_wo_dch
         """
+        if not raw_name:
+            return raw_name
+
         match = self.TEST_CASE_PATTERN.search(raw_name)
-        return match.group(1) if match else raw_name
+        if match:
+            return match.group(1)
+
+        match = self.BASELINE_SUFFIX_PATTERN.search(raw_name)
+        if match:
+            return match.group(1)
+
+        match = self.BASELINE_PREFIX_PATTERN.match(raw_name)
+        if match:
+            return match.group(1)
+
+        return raw_name

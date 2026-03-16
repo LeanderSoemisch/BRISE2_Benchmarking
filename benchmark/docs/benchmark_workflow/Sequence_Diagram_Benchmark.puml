@@ -104,7 +104,6 @@ else Standard analysis path
 end
 
 activate Analyzer
-Analyzer -> Analyzer: **Load dumps + partition objectives/instances**
 
 loop For each objective partition
     Analyzer -> Analyzer: **Generate plots + summary table**
@@ -130,4 +129,3 @@ deactivate Orchestrator
 User -> User: **Review results**
 
 @enduml
-

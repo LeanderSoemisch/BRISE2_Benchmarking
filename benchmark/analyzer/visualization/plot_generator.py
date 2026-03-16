@@ -15,14 +15,14 @@ class PlotGenerator:
         self.parser = ExperimentParser()
 
     @staticmethod
-    def _compute_robust_y_range(values: List[float]) -> Optional[List[float]]:
+    def _compute_robust_y_range(values: List[float], padding_ratio: float = 0.05) -> Optional[List[float]]:
         finite_vals = np.array([v for v in values if v is not None and np.isfinite(v)])
         if finite_vals.size == 0:
             return None
         min_y, max_y = float(np.min(finite_vals)), float(np.max(finite_vals))
         if not np.isfinite(min_y) or not np.isfinite(max_y):
             return None
-        pad = 0.05 * (max_y - min_y) if max_y != min_y else 0.05 * (abs(min_y) if min_y != 0 else 1.0)
+        pad = padding_ratio * (max_y - min_y) if max_y != min_y else padding_ratio * (abs(min_y) if min_y != 0 else 1.0)
         return [min_y - pad, max_y + pad]
 
 
@@ -80,7 +80,7 @@ class PlotGenerator:
         for idx, (baseline_key, baseline_result) in enumerate(baselines.items()):
             color = baseline_colors[idx % len(baseline_colors)]
             dash = baseline_dashes[idx % len(baseline_dashes)]
-            display_name = f"{self.parser.build_display_name(baseline_key)} Baseline"
+            display_name = self.parser.build_display_name(baseline_key)
 
             trajectory = None
             if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
@@ -321,7 +321,7 @@ class PlotGenerator:
                     if valid_values:
                         all_values.extend(valid_values)
                         baseline_name = self.parser.build_display_name(baseline_key)
-                        traces.append(go.Box(y=valid_values, name=f"{baseline_name} Baseline",
+                        traces.append(go.Box(y=valid_values, name=baseline_name,
                             boxmean='sd', marker=dict(opacity=0.5, color='gray'),
                             hovertemplate='%{y:.4f}<extra></extra>'))
 
@@ -330,10 +330,12 @@ class PlotGenerator:
 
         layout = dict(
             title=f'{objective} - Grouped Distribution Comparison{title_suffix}',
-            xaxis=dict(title='Test Case'), yaxis=dict(title=plot_config.objective_label),
+            xaxis=dict(title='Test Case', automargin=True),
+            yaxis=dict(title=plot_config.objective_label, automargin=True),
             showlegend=True, boxmode='overlay',
+            margin=dict(l=70, r=40, t=80, b=110),
         )
-        y_range = self._compute_robust_y_range(all_values)
+        y_range = self._compute_robust_y_range(all_values, padding_ratio=0.12)
         if y_range:
             layout['yaxis']['range'] = y_range
         if known_optimum is not None:
@@ -369,17 +371,19 @@ class PlotGenerator:
                     valid_values = [v for v in trajectory if v is not None and np.isfinite(v)]
                     if valid_values:
                         all_values.extend(valid_values)
-                        display_name = f"{self.parser.build_display_name(baseline_key)} Baseline"
+                        display_name = self.parser.build_display_name(baseline_key)
                         traces.append(go.Box(y=valid_values, name=display_name, boxmean='sd',
                             marker=dict(opacity=0.6, color='#808080'), line=dict(color='#606060'),
                             hovertemplate='%{y:.4f}<extra></extra>'))
 
         layout = dict(
             title=f'{objective} - Distribution Comparison',
-            xaxis=dict(title='Algorithm'), yaxis=dict(title=plot_config.objective_label),
+            xaxis=dict(title='Algorithm', automargin=True),
+            yaxis=dict(title=plot_config.objective_label, automargin=True),
             showlegend=True, boxmode='overlay',
+            margin=dict(l=70, r=40, t=80, b=110),
         )
-        y_range = self._compute_robust_y_range(all_values)
+        y_range = self._compute_robust_y_range(all_values, padding_ratio=0.12)
         if y_range:
             layout['yaxis']['range'] = y_range
         if known_optimum is not None:

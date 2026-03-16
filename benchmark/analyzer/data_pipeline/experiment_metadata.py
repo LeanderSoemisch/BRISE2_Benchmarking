@@ -102,7 +102,6 @@ class ExperimentMetadata:
             mh_type=meta.get("mh_type", ""),
         )
 
-    # ------------------------------------------------------------------
     @staticmethod
     def _parse_mh_type(datafile: str) -> str:
         """Derive a human-readable MH label from the DomainDescription DataFile path.
@@ -149,7 +148,6 @@ class ExperimentMetadata:
         """
         hp = (hyperparams_mode or "").lower()
 
-        # ── Old format (ModelConfiguration.ModelType) ─────────────────
         if legacy_model_type and not model_type_names:
             lmt = legacy_model_type.lower()
             is_hh = "hh" in mh_type.lower()
@@ -157,9 +155,8 @@ class ExperimentMetadata:
                 return "H-TPE" if is_hh else "S-TPE"
             if "brr" in lmt:
                 return "H-BRR" if is_hh else "S-BRR"
-            return legacy_model_type  # fallback: use raw value
+            return legacy_model_type
 
-        # ── Hyperparameter selection mode (new format) ─────────────────
         if hp == "default":
             return "Default"
         if hp == "tuned":
@@ -184,7 +181,6 @@ class ExperimentMetadata:
             return "S-BRR"
         return "S-TPE"  # ModelMock-only with provided → control baseline
 
-    # ------------------------------------------------------------------
     @staticmethod
     def get(meta: Dict[str, Any], path: str) -> Any:
         """
