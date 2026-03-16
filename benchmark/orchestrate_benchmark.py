@@ -120,11 +120,11 @@ def orchestrate(skip_analyzer: bool = False, cleanup_before_run: bool = False):
         logging.info("Cleanup completed.")
 
     run_benchmark()
-    if not skip_analyzer:
-        analyze(results_storage)
-    else:
-        logging.info("Skipping analyzer as requested.")
 
+    if skip_analyzer:
+        logging.info("Skipping analyzer as requested.")
+    else:
+        analyze(results_storage)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BRISE Benchmark orchestrator")
