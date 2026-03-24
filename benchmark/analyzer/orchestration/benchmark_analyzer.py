@@ -180,12 +180,7 @@ class BenchmarkAnalyzer:
 
     @staticmethod
     def _build_plot_title_suffix(plot_config) -> str:
-        """Build a human-readable title suffix from the plot's title or filter conditions.
-
-        If ``plot_config.title`` is set it is used as-is (e.g. "py.ES – Tuning Variants").
-        Otherwise, a suffix is auto-generated from any ``filterConditions``
-        (e.g. " [mh_type=py.ES]") so that filtered plots are self-describing.
-        """
+        """Build a easy readable title suffix from the plot's title or filter conditions"""
         if plot_config.title:
             return f" – {plot_config.title}"
         if plot_config.filter_conditions:

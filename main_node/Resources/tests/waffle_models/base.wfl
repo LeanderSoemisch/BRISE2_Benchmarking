@@ -892,7 +892,13 @@ Benchmark {
     objectivesToMeasure -> array
   }
 
-  KnownOptima ? -> object
+  KnownOptima ? {
+    // Per-objective known optimum values (map-like structure)
+    ObjectiveOptimum * {
+      objective -> string
+      optimum -> float
+    }
+  }
 
   Table ? {
     task -> boolean
@@ -1059,14 +1065,20 @@ Benchmark {
 
     RegretAnalysis ? {
       knownOptimum -> float
-      optimumPerObjective -> object
+      optimumPerObjective ? {
+        // Per-objective known optimum values used for regret computation
+        ObjectiveOptimum * {
+          objective -> string
+          optimum -> float
+        }
+      }
       regretType -> array
       [regretType in {"iteration", "time"}]
     }
 
     NormalizedImprovement ? {
       improvementType -> array
-      [improvementType in {"objective_value", "time_to_target", iteration_to_target}]
+      [improvementType in {"objective_value", "time_to_target", "iteration_to_target"}]
     }
 
     PerformanceProfile ? {

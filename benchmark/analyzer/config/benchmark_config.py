@@ -84,7 +84,6 @@ class TableConfig:
     runtime: bool = True
 
 
-
 @dataclass
 class RegretAnalysisConfig:
     known_optimum: Optional[float] = None
@@ -397,7 +396,6 @@ class BenchmarkConfig:
 
         regret_dict = comp_metrics_dict.get("RegretAnalysis", {})
         if regret_dict:
-            # Explicit optimumPerObjective in RegretAnalysis wins; fall back to KnownOptima
             explicit_per_obj = regret_dict.get("optimumPerObjective")
             merged_per_obj = dict(known_optima or {})
             if explicit_per_obj:
@@ -408,7 +406,6 @@ class BenchmarkConfig:
                 regret_type=regret_dict.get("regretType", ["iteration"])
             )
         elif known_optima:
-            # No explicit RegretAnalysis block but KnownOptima supplied → create one
             regret_config = RegretAnalysisConfig(optimum_per_objective=known_optima)
         else:
             regret_config = None

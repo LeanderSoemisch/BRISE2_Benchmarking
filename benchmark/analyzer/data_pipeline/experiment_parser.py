@@ -33,6 +33,14 @@ class ExperimentParser:
         """Get experiment name or ID"""
         return getattr(exp, 'name', None) or getattr(exp, 'ed_id', None) or 'experiment'
 
+    @staticmethod
+    def _is_placeholder_strategy(value: Any) -> bool:
+        """Detect placeholder tags produced by generic name builders."""
+        if value is None:
+            return True
+        text = str(value).strip().lower()
+        return text in {'', 'none', 'null', 'configstrategy'}
+
     def parse_features(self, raw_name: str) -> Dict[str, Any]:
         """Parse features from experiment naming pattern
 
@@ -106,11 +114,16 @@ class ExperimentParser:
             or meta.get('description.Searchspace.sampler')
             or fallback.get('Sampler')
         )
-        features['ConfigurationStrategy'] = (
-            meta.get('hyperparams_mode')
-            or meta.get('tuning_variant')
-            or fallback.get('ConfigurationStrategy')
-        )
+        # Keep the semantic meaning of "ConfigurationStrategy" aligned with
+        # the experiment naming token whenever it is explicitly available.
+        name_strategy = fallback.get('ConfigurationStrategy')
+        if not self._is_placeholder_strategy(name_strategy):
+            features['ConfigurationStrategy'] = name_strategy
+        else:
+            features['ConfigurationStrategy'] = (
+                meta.get('hyperparams_mode')
+                or meta.get('tuning_variant')
+            )
         features['StopCondition'] = (
             meta.get('description.StopCondition.Name')
             or meta.get('description.StopCondition.Type')
