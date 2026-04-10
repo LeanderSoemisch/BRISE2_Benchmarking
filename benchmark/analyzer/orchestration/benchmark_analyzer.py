@@ -413,6 +413,32 @@ class BenchmarkAnalyzer:
 
             return normalized_experiments, normalized_baselines
 
+        if normalization_strategy == NormalizationType.MAX_OVER_ALL.value:
+            all_maxes = [max((y for y in s if y is not None), default=None) for s in all_series]
+            global_max = max((m for m in all_maxes if m is not None), default=None)
+
+            if global_max is None or global_max == 0:
+                return data_series, baselines
+
+            normalized_experiments = [[(y / global_max) if y is not None else None for y in s] for s in data_series]
+
+            normalized_baselines = {}
+            for baseline_key, baseline_result in baselines.items():
+                traj = ComparisonProcessor._extract_baseline_trajectory(baseline_result, objective)
+                if traj:
+                    normalized_traj = [(y / global_max) if y is not None else None for y in traj]
+                    normalized_baselines[baseline_key] = BaselineResult(
+                        baseline_id=baseline_result.baseline_id,
+                        baseline_type=baseline_result.baseline_type,
+                        trajectory=normalized_traj,
+                        best_value=max((v for v in normalized_traj if v is not None), default=float('-inf')),
+                        raw_experiment=baseline_result.raw_experiment
+                    )
+                else:
+                    normalized_baselines[baseline_key] = baseline_result
+
+            return normalized_experiments, normalized_baselines
+
         return data_series, baselines
 
 

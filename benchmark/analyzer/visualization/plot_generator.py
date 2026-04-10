@@ -42,7 +42,8 @@ class PlotGenerator:
 
     @staticmethod
     def _apply_axis_config(layout: Dict[str, Any], plot_config: PlotConfig):
-        if plot_config.metric_scale == ScaleType.LOG10.value:
+        # Box plots use categorical x-axis labels; metric-axis scaling is not applicable.
+        if plot_config.plot_type != 'box_plot' and plot_config.metric_scale == ScaleType.LOG10.value:
             layout['xaxis']['type'] = 'log'
         if plot_config.objective_scale == ScaleType.LOG10.value:
             layout['yaxis']['type'] = 'log'

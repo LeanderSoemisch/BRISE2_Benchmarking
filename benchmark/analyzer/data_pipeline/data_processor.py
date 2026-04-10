@@ -15,6 +15,9 @@ class DataProcessor:
         if method == NormalizationType.MIN_OVER_ALL.value:
             return DataProcessor._normalize_by_global_min(series_list)
 
+        if method == NormalizationType.MAX_OVER_ALL.value:
+            return DataProcessor._normalize_by_global_max(series_list)
+
         return series_list
 
     @staticmethod
@@ -27,6 +30,17 @@ class DataProcessor:
             return series_list
 
         return [[(y / global_min) if y is not None else None for y in series] for series in series_list]
+
+    @staticmethod
+    def _normalize_by_global_max(series_list: List[List[float]]) -> List[List[float]]:
+        """Normalize all series by global maximum value"""
+        all_maxes = [max([y for y in s if y is not None], default=None) for s in series_list]
+        global_max = max([m for m in all_maxes if m is not None], default=None)
+
+        if global_max is None or global_max == 0:
+            return series_list
+
+        return [[(y / global_max) if y is not None else None for y in series] for series in series_list]
 
     @staticmethod
     def compute_best_so_far(values: List[Optional[float]], direction: str = OptimizationDirection.MINIMIZE.value) -> \

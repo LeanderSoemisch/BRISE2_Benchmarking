@@ -216,18 +216,18 @@ class BenchmarkConfig:
 
     @staticmethod
     def _parse_normalization_strategy(norm_strategy_data: Dict[str, Any]) -> str:
+        if not isinstance(norm_strategy_data, dict):
+            return NormalizationType.NONE.value
+
         if 'MinOverAll' in norm_strategy_data:
             return NormalizationType.MIN_OVER_ALL.value
-        elif 'MaxOverAll' in norm_strategy_data:
+        if 'MaxOverAll' in norm_strategy_data:
             return NormalizationType.MAX_OVER_ALL.value
         return NormalizationType.NONE.value
 
     @staticmethod
     def _create_plot_config(plot_type: str, plot_data: Dict[str, Any]) -> PlotConfig:
-        metric_axis = plot_data.get("MetricAxis", {})
         objective_axis = plot_data.get("ObjectiveAxis", {})
-
-        metric_desc = metric_axis.get("metricDescription", "iterations completed")
         norm_strategy = BenchmarkConfig._parse_normalization_strategy(objective_axis.get("NormalizationStrategy", {}))
 
         filter_conditions = BenchmarkConfig._parse_match_conditions(
@@ -237,14 +237,29 @@ class BenchmarkConfig:
         # Per-plot grouping override (overrides global CustomGrouping for this plot)
         plot_grouping = None
         if "CustomGrouping" in plot_data:
-            plot_grouping = BenchmarkConfig._parse_custom_grouping(plot_data["CustomGrouping"])
+            plot_grouping = BenchmarkConfig._parse_custom_grouping(plot_data.get("CustomGrouping", {}))
+
+        is_box_plot = plot_type == "box_plot"
+        if is_box_plot:
+            if "MetricAxis" in plot_data:
+                logger.warning("BoxPlot ignores MetricAxis because its x-axis is categorical (algorithm/test case groups)")
+            metric_desc = "categorical groups"
+            metric_label = "Algorithm"
+            metric_scale = ScaleType.LINEAR.value
+            metric_type = MetricType.ITERATION.value
+        else:
+            metric_axis = plot_data.get("MetricAxis", {})
+            metric_desc = metric_axis.get("metricDescription", "iterations completed")
+            metric_label = metric_axis.get("label", "iteration")
+            metric_scale = metric_axis.get("scale", ScaleType.LINEAR.value)
+            metric_type = BenchmarkConfig._parse_metric_type(metric_desc)
 
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
-            metric_label=metric_axis.get("label", "iteration"),
-            metric_scale=metric_axis.get("scale", ScaleType.LINEAR.value),
-            metric_type=BenchmarkConfig._parse_metric_type(metric_desc),
+            metric_label=metric_label,
+            metric_scale=metric_scale,
+            metric_type=metric_type,
             objectives_to_plot=objective_axis.get("objectivesToPlot", []),
             normalize=objective_axis.get("normalize", True),
             normalization_strategy=norm_strategy,

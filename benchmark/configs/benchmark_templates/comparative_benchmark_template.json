@@ -64,11 +64,6 @@
                 "BoxPlot": {
                     "Type": "box_plot",
                     "enableGrouping": false,
-                    "MetricAxis": {
-                        "metricDescription": "iterations completed",
-                        "label": "Iteration",
-                        "scale": "linear"
-                    },
                     "ObjectiveAxis": {
                         "objectivesToPlot": [
                             "Y1",

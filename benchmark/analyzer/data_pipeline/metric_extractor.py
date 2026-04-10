@@ -12,7 +12,7 @@ class MetricExtractor:
         """Discover all objective keys from experiments"""
         objectives = set()
         for exp in experiments:
-            configs = getattr(exp, 'measured_configurations', [])[:3]
+            configs = getattr(exp, 'measured_configurations', [])[:5]
             for conf in configs:
                 results = getattr(conf, 'results', {})
                 for key, value in results.items():
