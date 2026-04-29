@@ -7,6 +7,9 @@ import uuid
 from core_entities.configuration import Configuration
 from tools.mongo_dao import MongoDB
 from tools.rabbitmq_common_tools import RabbitMQConnection, publish
+from configuration_distribution.configurationDistributionOrchestrator import ConfigurationDistributionOrchestrator
+
+from tools.reflective_class_import import reflective_class_import
 
 
 class WSClient:
@@ -41,6 +44,8 @@ class WSClient:
         self._number_of_workers = None
         self.connection_thread = None
         self.init_connection()
+
+        self.distributionAlgorithm = ConfigurationDistributionOrchestrator().get_distribution(experiment_description)
 
     def init_connection(self):
         """
@@ -107,6 +112,16 @@ class WSClient:
         The function that returns the number of needed configurations for making balanced loading
         :return:
         """
+
+        try:
+            if body:
+                data = json.loads(body.decode())
+                evaluation_time_str = data.get("evaluation_time")
+                repetition_time = float(evaluation_time_str)
+
+        except Exception as e:
+            repetition_time = 0
+
         with self.number_of_workers_lock:
             current_number_of_worker = self.get_number_of_workers()
             if self._number_of_workers is None:
@@ -119,11 +134,16 @@ class WSClient:
                 worker_capacity = differences + 1
             else:
                 worker_capacity = 0
-        dictionary_dump = {"worker_capacity": worker_capacity}
+
+        dictionary_dump = {
+            "worker_capacity": worker_capacity,
+            "number_of_workers": current_number_of_worker,
+            "repetition_time": repetition_time
+            }
         body = json.dumps(dictionary_dump)
-        publish(exchange='get_new_configuration_exchange',
-                routing_key=self.experiment_id,
-                body=body)
+
+        # * Entry for distribution alogrithm
+        self.distributionAlgorithm.dispatch(self.experiment_id, body)
 
     def is_all_tasks_finish(self, id_measurement):
         """
@@ -151,16 +171,19 @@ class WSClient:
                 task_result['task_result'])
             # We should decouple one from another.
             if self.is_all_tasks_finish(task_result['id_measurement']):
+
                 publish(exchange='measurement_results_exchange',
-                        routing_key=self.experiment_id,
-                        body=json.dumps(self.measurement[task_result['id_measurement']]))
+                    routing_key=self.experiment_id,
+                    body=json.dumps(self.measurement[task_result['id_measurement']]))
 
                 self.logger.debug("Results for {task_param} : {task_res}".format(
                     task_param=str(self.measurement[task_result['id_measurement']]['tasks_to_send']),
                     task_res=str(self.measurement[task_result['id_measurement']]['tasks_results'])))
                 del self.measurement[task_result['id_measurement']]
+
         except KeyError:
             self.logger.info("The old task was received")  # in case of restart main without cleaning all queues
+
 
     class _EventServiceConnection(RabbitMQConnection):
         """
