@@ -1,9 +1,3 @@
-import sys
-import os
-
-# This line adds your 'main_node' directory to Python's path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import unittest
 import logging
 import json
@@ -239,7 +233,7 @@ class TestAsynchronousDistribution(unittest.TestCase):
         """
         
         # * only need to mock the logger here for a clean test
-        with patch('configuration_distribution.abstractDistribution') as MockAbstractDistribution:
+        with patch('configuration_distribution.distribution_abs') as MockAbstractDistribution:
             
             # ? Setup mock logger
             mock_instance = MockAbstractDistribution.return_value
@@ -261,7 +255,7 @@ class TestAsynchronousDistribution(unittest.TestCase):
         Tests that first_it is a pass
         """
         # ? Instantiate the class
-        with patch('configuration_distribution.abstractDistribution'):
+        with patch('configuration_distribution.distribution_abs'):
             distributor = AsynchronousDistribution(self.config)
             
             # * assert, that calling it doesn't raise an error.

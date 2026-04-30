@@ -1,4 +1,4 @@
-from configuration_distribution.abstractDistribution import AbstractDistribution
+from configuration_distribution.distribution_abs import AbstractDistribution
 from tools.reflective_class_import import reflective_class_import
 import logging
 
@@ -8,7 +8,6 @@ class ConfigurationDistributionOrchestrator:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
-    # dict really neccessary? string would be easier --> just copied from sampling
     def get_distribution(self, distribution_description: dict) -> AbstractDistribution:
         """
         Returns an instance of a distribution algorithm based on the provided configuration.
