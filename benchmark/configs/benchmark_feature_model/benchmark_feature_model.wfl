@@ -34,6 +34,7 @@ Benchmark {
     ObjectiveOptimum * {
       objective -> string
       optimum -> float
+      [objective in Benchmark.Experiment.objectivesToMeasure]
     }
   }
 
@@ -103,7 +104,7 @@ Benchmark {
       CustomPlot {
         Type -> predefined
         [Type = 'parallel_coordinates_plot']
-        
+
         enableGrouping -> boolean
         title -> string
 
@@ -201,14 +202,8 @@ Benchmark {
     }
 
     RegretAnalysis ? {
-      knownOptimum -> float
-      optimumPerObjective ? {
-        // Per-objective known optimum values used for regret computation
-        ObjectiveOptimum * {
-          objective -> string
-          optimum -> float
-        }
-      }
+      // Cross-validate: RegretAnalysis requires KnownOptima to be specified.
+      [Benchmark.KnownOptima]
       regretType -> array
       [regretType in {"iteration", "time"}]
     }
