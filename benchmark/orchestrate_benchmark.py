@@ -64,13 +64,13 @@ def analyze(
 
         config = BenchmarkConfig.from_json(config_dict)
 
-        has_comparative_metrics = ConfigDetector.has_comparative_metrics(config_dict)
-        if has_comparative_metrics:
+        has_comparative_analysis = ConfigDetector.has_comparative_analysis(config_dict)
+        if has_comparative_analysis:
             logging.info("Comparative metrics detected - comparative analysis will be performed")
 
         logging.info(f"Running analyzer on dumps in {results_storage}")
 
-        if interactive_baselines and has_comparative_metrics:
+        if interactive_baselines and has_comparative_analysis:
             logging.info("Interactive baseline selection mode enabled")
             from analyzer.orchestration.interactive_baseline_analyzer import InteractiveBaselineAnalyzer
             analyzer = InteractiveBaselineAnalyzer(config)

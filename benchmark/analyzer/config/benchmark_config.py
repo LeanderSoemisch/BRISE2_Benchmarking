@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlotType(Enum):
-    IMPROVEMENT = 'improvement_plot'
+    CONVERGENCE = 'convergence_plot'
     CUSTOM = 'custom_plot'
 
 
@@ -92,7 +92,7 @@ class RegretAnalysisConfig:
 
 
 @dataclass
-class NormalizedImprovementConfig:
+class RelativeImprovementConfig:
     improvement_type: List[str] = field(default_factory=lambda: ["objective_value"])
 
 
@@ -107,7 +107,7 @@ class PerformanceProfileConfig:
 class ComparativeTableConfig:
     experiment: bool = True
     baseline: bool = True
-    normalized_improvement: bool = True
+    relative_improvement: bool = True
     speedup_factor: bool = True
     converged_at_iteration: bool = True
     experiment_best: bool = True
@@ -116,17 +116,17 @@ class ComparativeTableConfig:
 
 
 @dataclass
-class ComparativeMetricsConfig:
+class ComparativeAnalysisConfig:
     show_summary_table: bool = True
     comparative_table: Optional[ComparativeTableConfig] = None
     regret_analysis: Optional[RegretAnalysisConfig] = None
-    normalized_improvement: Optional[NormalizedImprovementConfig] = None
+    relative_improvement: Optional[RelativeImprovementConfig] = None
     performance_profile: Optional[PerformanceProfileConfig] = None
 
     def is_active(self) -> bool:
         return any([
             self.regret_analysis is not None,
-            self.normalized_improvement is not None,
+            self.relative_improvement is not None,
             self.performance_profile is not None,
             self.comparative_table is not None
         ])
@@ -135,7 +135,7 @@ class ComparativeMetricsConfig:
         return self.regret_analysis.regret_type if self.regret_analysis else ["iteration"]
 
     def get_improvement_types(self) -> List[str]:
-        return self.normalized_improvement.improvement_type if self.normalized_improvement else ["objective_value"]
+        return self.relative_improvement.improvement_type if self.relative_improvement else ["objective_value"]
 
     def get_tau_max(self) -> float:
         return self.performance_profile.tau_max if self.performance_profile else 10.0
@@ -207,7 +207,7 @@ class BenchmarkConfig:
     objectives_to_measure: List[str]
     plots: List[PlotConfig]
     table_config: TableConfig
-    comparative_metrics: ComparativeMetricsConfig = field(default_factory=ComparativeMetricsConfig)
+    comparative_analysis: ComparativeAnalysisConfig = field(default_factory=ComparativeAnalysisConfig)
     known_optima: Dict[str, float] = field(default_factory=dict)
 
     @staticmethod
@@ -302,8 +302,8 @@ class BenchmarkConfig:
             plot_data = benchmark[plot_key]
             plot_type_data = plot_data.get("PlotType", {})
 
-            if "ImprovementPlot" in plot_type_data:
-                plots.append(BenchmarkConfig._create_plot_config(PlotType.IMPROVEMENT.value, plot_type_data["ImprovementPlot"]))
+            if "ConvergencePlot" in plot_type_data:
+                plots.append(BenchmarkConfig._create_plot_config(PlotType.CONVERGENCE.value, plot_type_data["ConvergencePlot"]))
             elif "CustomPlot" in plot_type_data:
                 plots.append(BenchmarkConfig._create_plot_config(PlotType.CUSTOM.value, plot_type_data["CustomPlot"]))
             elif "BoxPlot" in plot_type_data:
@@ -317,8 +317,8 @@ class BenchmarkConfig:
             except (TypeError, ValueError):
                 pass
 
-        comparative_metrics = BenchmarkConfig._parse_comparative_metrics(
-            benchmark.get("ComparativeMetrics", {}),
+        comparative_analysis = BenchmarkConfig._parse_comparative_analysis(
+            benchmark.get("ComparativeAnalysis", {}),
             known_optima=known_optima,
         )
 
@@ -330,7 +330,7 @@ class BenchmarkConfig:
             objectives_to_measure=experiment.get("objectivesToMeasure", []),
             plots=plots,
             table_config=table_config,
-            comparative_metrics=comparative_metrics,
+            comparative_analysis=comparative_analysis,
             known_optima=known_optima,
         )
 
@@ -385,21 +385,21 @@ class BenchmarkConfig:
         return parsed_dimensions
 
     @staticmethod
-    def _parse_comparative_metrics(comp_metrics_dict: Dict[str, Any],
-                                    known_optima: Optional[Dict[str, float]] = None) -> ComparativeMetricsConfig:
+    def _parse_comparative_analysis(comp_metrics_dict: Dict[str, Any],
+                                    known_optima: Optional[Dict[str, float]] = None) -> ComparativeAnalysisConfig:
         if not comp_metrics_dict:
             # Still create a RegretAnalysisConfig if we have known_optima to forward
             if known_optima:
-                return ComparativeMetricsConfig(
+                return ComparativeAnalysisConfig(
                     regret_analysis=RegretAnalysisConfig(optimum_per_objective=known_optima)
                 )
-            return ComparativeMetricsConfig()
+            return ComparativeAnalysisConfig()
 
         comp_table_dict = comp_metrics_dict.get("ComparativeTable", {})
         comp_table_config = ComparativeTableConfig(
             experiment=comp_table_dict.get("experiment", True),
             baseline=comp_table_dict.get("baseline", True),
-            normalized_improvement=comp_table_dict.get("normalizedImprovement", True),
+            relative_improvement=comp_table_dict.get("relativeImprovement", True),
             speedup_factor=comp_table_dict.get("speedupFactor", comp_table_dict.get("speedup_factor", True)),
             converged_at_iteration=comp_table_dict.get("convergedAtIteration", True),
             experiment_best=comp_table_dict.get("experimentBest", True),
@@ -425,10 +425,10 @@ class BenchmarkConfig:
         else:
             regret_config = None
 
-        normalized_dict = comp_metrics_dict.get("NormalizedImprovement", {})
-        normalized_config = NormalizedImprovementConfig(
-            improvement_type=normalized_dict.get("improvementType", ["objective_value"])
-        ) if normalized_dict is not None else None
+        relative_dict = comp_metrics_dict.get("RelativeImprovement", {})
+        relative_config = RelativeImprovementConfig(
+            improvement_type=relative_dict.get("improvementType", ["objective_value"])
+        ) if relative_dict is not None else None
 
         performance_dict = comp_metrics_dict.get("PerformanceProfile", {})
         performance_config = PerformanceProfileConfig(
@@ -437,10 +437,10 @@ class BenchmarkConfig:
             objectives_to_profile=performance_dict.get("objectivesToProfile", [])
         ) if performance_dict else None
 
-        return ComparativeMetricsConfig(
+        return ComparativeAnalysisConfig(
             show_summary_table=show_summary_table,
             comparative_table=comp_table_config,
             regret_analysis=regret_config,
-            normalized_improvement=normalized_config,
+            relative_improvement=relative_config,
             performance_profile=performance_config
         )

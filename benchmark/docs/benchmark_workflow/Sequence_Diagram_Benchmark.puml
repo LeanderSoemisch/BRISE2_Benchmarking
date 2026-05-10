@@ -77,10 +77,10 @@ participant "Report/Export\nService" as ReportService #lightgray
 
 Orchestrator -> ConfigDetector: **Detect benchmark config**\n//detect_config_file()//
 ConfigDetector -->> Orchestrator: config path
-Orchestrator -> ConfigDetector: **Load + inspect config**\n//load_config(), has_comparative_metrics()//
+Orchestrator -> ConfigDetector: **Load + inspect config**\n//load_config(), has_comparative_analysis()//
 ConfigDetector -->> Orchestrator: config dict + comparative mode flag
 
-alt Interactive baselines enabled AND comparative metrics active
+alt Interactive baselines enabled AND comparative analysis active
     Orchestrator -> InteractiveBaselineAnalyzer: **analyze_with_baseline_selection()**
     activate InteractiveBaselineAnalyzer
 
@@ -114,7 +114,7 @@ loop For each objective partition
     end note
 end
 
-alt Comparative metrics configured
+alt Comparative analysis configured
     Analyzer -> ComparativeOrchestrator: **Compute comparative metrics**
     ComparativeOrchestrator -->> Analyzer: comparative results per objective
     Analyzer -> Analyzer: **Generate comparative plots + performance profile**

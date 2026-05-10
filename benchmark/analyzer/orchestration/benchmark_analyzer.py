@@ -37,7 +37,7 @@ class BenchmarkAnalyzer:
         self.export_service = ExportService()
 
         self.comparative_orchestrator = None
-        if self.config.comparative_metrics.is_active():
+        if self.config.comparative_analysis.is_active():
             logger.info("Initializing comparative analysis mode...")
             self.comparative_orchestrator = ComparativeAnalysisOrchestrator(config)
 
@@ -64,7 +64,7 @@ class BenchmarkAnalyzer:
         comparative_tables = {}
         performance_profile_plot = None
 
-        if self.comparative_orchestrator and self.config.comparative_metrics.is_active():
+        if self.comparative_orchestrator and self.config.comparative_analysis.is_active():
             logger.info("Computing comparative metrics...")
             comparative_results = self.comparative_orchestrator.compute_comparative_metrics(
                 filtered_experiments, baselines
@@ -73,7 +73,7 @@ class BenchmarkAnalyzer:
                 logger.info("Generating comparative plots...")
                 comparative_plots = self._generate_comparative_plots(comparative_results)
                 comparative_tables = self._build_comparative_tables(comparative_results)
-                if self.config.comparative_metrics.performance_profile is not None:
+                if self.config.comparative_analysis.performance_profile is not None:
                     logger.info("Computing global performance profile...")
                     performance_profile_plot = self._generate_global_performance_profile(comparative_results)
 
@@ -165,7 +165,7 @@ class BenchmarkAnalyzer:
                     title_suffix=title_suffix, known_optimum=known_optimum,
                 )
             else:
-                fig = self._create_improvement_plot(
+                fig = self._create_convergence_plot(
                     plot_exps, result_key, plot_config, baselines,
                     known_optimum=known_optimum, title_suffix=title_suffix,
                 )
@@ -216,12 +216,12 @@ class BenchmarkAnalyzer:
             plots = []
             regret_type_labels = {"iteration": "Regret Analysis (Iterations)", "time": "Regret Analysis (Time)"}
             improvement_type_labels = {
-                "objective_value": ("Normalized Improvement", "Objective Value"),
-                "time_to_target": ("Normalized Improvement: Speedup Factor", "Time"),
-                "iteration_to_target": ("Normalized Improvement: Speedup Factor", "Iterations")
+                "objective_value": ("Relative Improvement", "Objective Value"),
+                "time_to_target": ("Relative Improvement: Speedup Factor", "Time"),
+                "iteration_to_target": ("Relative Improvement: Speedup Factor", "Iterations")
             }
 
-            for regret_type in self.config.comparative_metrics.get_regret_types():
+            for regret_type in self.config.comparative_analysis.get_regret_types():
                 fig = self.comparative_plotter.plot_regret_curves(
                     comparison_list,
                     title=f"{objective} - {regret_type_labels.get(regret_type, 'Regret Analysis')}",
@@ -230,9 +230,9 @@ class BenchmarkAnalyzer:
                 if fig:
                     plots.append(fig)
 
-            for imp_type in self.config.comparative_metrics.get_improvement_types():
-                metric_type, dimension = improvement_type_labels.get(imp_type, ("Normalized Improvement", imp_type))
-                fig = self.comparative_plotter.plot_normalized_improvement(
+            for imp_type in self.config.comparative_analysis.get_improvement_types():
+                metric_type, dimension = improvement_type_labels.get(imp_type, ("Relative Improvement", imp_type))
+                fig = self.comparative_plotter.plot_relative_improvement(
                     comparison_list,
                     title=f"{objective} - {metric_type} ({dimension})",
                     improvement_type=imp_type
@@ -285,8 +285,8 @@ class BenchmarkAnalyzer:
 
         objectives = sorted({obj for tc_data in test_case_performance.values() for obj in tc_data})
 
-        if self.config.comparative_metrics.performance_profile and self.config.comparative_metrics.performance_profile.objectives_to_profile:
-            configured = self.config.comparative_metrics.performance_profile.objectives_to_profile
+        if self.config.comparative_analysis.performance_profile and self.config.comparative_analysis.performance_profile.objectives_to_profile:
+            configured = self.config.comparative_analysis.performance_profile.objectives_to_profile
             objectives = [obj for obj in objectives if obj in configured]
 
         if len(objectives) < 2:
@@ -316,8 +316,8 @@ class BenchmarkAnalyzer:
 
             performance_profiles = calculator.generate_performance_profile(
                 ratios_df,
-                tau_range=(1.0, self.config.comparative_metrics.get_tau_max()),
-                tau_steps=self.config.comparative_metrics.get_tau_steps()
+                tau_range=(1.0, self.config.comparative_analysis.get_tau_max()),
+                tau_steps=self.config.comparative_analysis.get_tau_steps()
             )
 
             if not performance_profiles:
@@ -332,7 +332,7 @@ class BenchmarkAnalyzer:
             logger.error(f"Failed to generate global performance profile: {e}", exc_info=True)
             return None
 
-    def _create_improvement_plot(self, experiments: List[Any], objective: str, plot_config: Any,
+    def _create_convergence_plot(self, experiments: List[Any], objective: str, plot_config: Any,
                                 baselines: Dict[str, Any] = None,
                                 known_optimum: Optional[float] = None,
                                 title_suffix: str = "") -> Optional[go.Figure]:
@@ -356,7 +356,7 @@ class BenchmarkAnalyzer:
             return self.plotter.create_custom_plot(objective, names, data_series, time_series, plot_config,
                                                    normalized_baselines, known_optimum=known_optimum)
         else:
-            return self.plotter.create_improvement_plot(objective, names, data_series, plot_config,
+            return self.plotter.create_convergence_plot(objective, names, data_series, plot_config,
                                                         normalized_baselines, known_optimum=known_optimum,
                                                         title_suffix=title_suffix)
 
@@ -473,7 +473,7 @@ class BenchmarkAnalyzer:
         return tables_by_objective
 
     def _build_comparative_tables(self, comparative_results: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        table_config = self.config.comparative_metrics.comparative_table
+        table_config = self.config.comparative_analysis.comparative_table
         is_minimizing_fn = None
         if self.comparative_orchestrator:
             is_minimizing_fn = self.comparative_orchestrator.comparison_processor._is_minimizing

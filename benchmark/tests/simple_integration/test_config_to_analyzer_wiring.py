@@ -13,6 +13,6 @@ def test_comparative_template_wires_comparative_orchestrator():
     analyzer = BenchmarkAnalyzer(cfg)
 
     assert analyzer.comparative_orchestrator is not None
-    assert cfg.comparative_metrics.is_active() is True
+    assert cfg.comparative_analysis.is_active() is True
 
 

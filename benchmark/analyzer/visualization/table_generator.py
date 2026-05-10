@@ -62,7 +62,7 @@ class TableGenerator:
         # Add comparative metrics if available
         if comparative_data:
             row['Regret (final)'] = self._format_metric(comparative_data.get('regret_final'))
-            row['Norm. Improvement'] = self._format_percentage(comparative_data.get('normalized_improvement'))
+            row['Rel. Improvement'] = self._format_percentage(comparative_data.get('relative_improvement'))
             row['Performance Ratio'] = self._format_metric(comparative_data.get('performance_ratio'))
 
         return row
@@ -120,9 +120,9 @@ class TableGenerator:
             return ""
 
         preferred_order = [
-            'Experiment', 'Baseline', 'Norm. Improvement', 'Speedup Factor',
+            'Experiment', 'Baseline', 'Rel. Improvement', 'Speedup Factor',
             'Converged at Iter', 'Experiment Best', 'Baseline Best', 'Final Regret',
-            'NI (Objective)', 'NI (Time)', 'NI (Iterations)',
+            'RI (Objective)', 'RI (Time)', 'RI (Iterations)',
         ]
         all_keys: set = set().union(*(row.keys() for row in rows))
         headers = [h for h in preferred_order if h in all_keys]

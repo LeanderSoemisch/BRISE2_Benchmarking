@@ -60,7 +60,7 @@ class ConfigDetector:
         return None
 
     @staticmethod
-    def has_comparative_metrics(config_dict: Dict[str, Any]) -> bool:
+    def has_comparative_analysis(config_dict: Dict[str, Any]) -> bool:
         """
         Check if configuration includes comparative metrics.
 
@@ -70,13 +70,13 @@ class ConfigDetector:
         Returns:
             True if comparative metrics are configured
         """
-        comp_metrics = config_dict.get("Benchmark", {}).get("ComparativeMetrics", {})
-        if not comp_metrics:
+        comp_analysis = config_dict.get("Benchmark", {}).get("ComparativeAnalysis", {})
+        if not comp_analysis:
             return False
         enabled = [
-            m for m in ["RegretAnalysis", "NormalizedImprovement", "PerformanceProfile", "ComparativeTable"]
-            if comp_metrics.get(m) and isinstance(comp_metrics[m], dict)
+            m for m in ["RegretAnalysis", "RelativeImprovement", "PerformanceProfile", "ComparativeTable"]
+            if comp_analysis.get(m) and isinstance(comp_analysis[m], dict)
         ]
         if enabled:
-            logger.info(f"Comparative metrics detected: {', '.join(enabled)}")
+            logger.info(f"Comparative analysis detected: {', '.join(enabled)}")
         return bool(enabled)

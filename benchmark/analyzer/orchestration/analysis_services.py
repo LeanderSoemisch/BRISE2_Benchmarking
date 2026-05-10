@@ -85,13 +85,13 @@ class ComparativeTableService:
                 if (not table_config or table_config.final_regret) and result.final_regret is not None:
                     row['Final Regret'] = f"{result.final_regret:.6f}"
 
-                if not table_config or table_config.normalized_improvement:
-                    if result.normalized_improvement is not None:
-                        row['NI (Objective)'] = f"{result.normalized_improvement:.4f}"
-                    if result.normalized_improvement_time is not None:
-                        row['NI (Time)'] = f"{result.normalized_improvement_time:.4f}"
-                    if result.normalized_improvement_iterations is not None:
-                        row['NI (Iterations)'] = f"{result.normalized_improvement_iterations:.4f}"
+                if not table_config or table_config.relative_improvement:
+                    if result.relative_improvement is not None:
+                        row['RI (Objective)'] = f"{result.relative_improvement:.4f}"
+                    if result.relative_improvement_time is not None:
+                        row['RI (Time)'] = f"{result.relative_improvement_time:.4f}"
+                    if result.relative_improvement_iterations is not None:
+                        row['RI (Iterations)'] = f"{result.relative_improvement_iterations:.4f}"
 
                 if result.converged_at_iteration is not None and (not table_config or table_config.converged_at_iteration):
                     row['Converged at Iter'] = result.converged_at_iteration

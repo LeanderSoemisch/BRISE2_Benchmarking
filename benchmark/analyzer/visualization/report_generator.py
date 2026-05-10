@@ -159,6 +159,6 @@ class ReportGenerator:
                 f"</div>")
 
     def _show_comparative_table(self) -> bool:
-        if hasattr(self.config, "comparative_metrics") and self.config.comparative_metrics:
-            return getattr(self.config.comparative_metrics, "show_summary_table", True)
+        if hasattr(self.config, "comparative_analysis") and self.config.comparative_analysis:
+            return getattr(self.config.comparative_analysis, "show_summary_table", True)
         return True

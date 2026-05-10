@@ -61,18 +61,18 @@ class ComparativePlotGenerator:
 
     BASELINE_COLORS = ['#2980b9', '#e67e22', '#27ae60', '#c0392b', '#8e44ad']
 
-    def plot_normalized_improvement(
+    def plot_relative_improvement(
         self,
         comparison_results: List[ComparisonResult],
-        title: str = "Normalized Improvement",
+        title: str = "Relative Improvement",
         improvement_type: str = "objective_value"
     ) -> Optional[go.Figure]:
         improvement_attr = {
-            "objective_value": "normalized_improvement",
-            "time_to_target": "normalized_improvement_time",
-            "iteration_to_target": "normalized_improvement_iterations"
+            "objective_value": "relative_improvement",
+            "time_to_target": "relative_improvement_time",
+            "iteration_to_target": "relative_improvement_iterations"
         }
-        attr_name = improvement_attr.get(improvement_type, "normalized_improvement")
+        attr_name = improvement_attr.get(improvement_type, "relative_improvement")
         is_ratio_based = improvement_type in ["time_to_target", "iteration_to_target"]
 
         experiment_names, improvements, baseline_types = [], [], []
@@ -151,7 +151,7 @@ class ComparativePlotGenerator:
             title=title,
             xaxis=dict(title='Experiment', tickangle=45, automargin=True),
             yaxis=dict(
-                title='Speedup Factor' if is_ratio_based else 'Normalized Improvement',
+                title='Speedup Factor' if is_ratio_based else 'Relative Improvement',
                 range=[y_axis_min, y_max],
                 automargin=True,
             ),

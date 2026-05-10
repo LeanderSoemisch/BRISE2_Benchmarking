@@ -15,7 +15,7 @@ def _config_with_performance_profile() -> BenchmarkConfig:
                     "objectivesToMeasure": ["Y1", "Y2"],
                 },
                 "Table": {},
-                "ComparativeMetrics": {
+                "ComparativeAnalysis": {
                     "PerformanceProfile": {
                         "tauMax": 4.0,
                         "tauSteps": 20,

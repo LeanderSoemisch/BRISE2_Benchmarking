@@ -12,7 +12,7 @@ def _build_config() -> BenchmarkConfig:
                 "Resources": {"Folder": "./results/serialized/"},
                 "Experiment": {"name": "cmp", "description": "cmp", "objectivesToMeasure": ["Y1"]},
                 "Table": {},
-                "ComparativeMetrics": {
+                "ComparativeAnalysis": {
                     "RegretAnalysis": {
                         "knownOptimum": 9.0,
                         "optimumPerObjective": {"Y1": 1.0},

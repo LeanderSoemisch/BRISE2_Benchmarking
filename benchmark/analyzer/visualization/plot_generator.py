@@ -112,7 +112,7 @@ class PlotGenerator:
 
         return traces, all_values
 
-    def create_improvement_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
+    def create_convergence_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
             plot_config: PlotConfig, baselines: Dict[str, Any] = None,
             known_optimum: Optional[float] = None,
             title_suffix: str = "") -> go.Figure:
@@ -195,7 +195,7 @@ class PlotGenerator:
             baselines: Dict[str, Any] = None,
             title_suffix: str = "",
             known_optimum: Optional[float] = None) -> Optional[go.Figure]:
-        """Create grouped improvement plot (mean ± std band) or box plot per group.
+        """Create grouped convergence plot (mean ± std band) or box plot per group.
 
         The y-axis is auto-scaled to the data range (min/max + 5 % padding).
         A dashed green reference line is drawn at ``known_optimum`` when provided.

@@ -31,8 +31,8 @@
     },
     "Plot_0": {
       "PlotType": {
-        "ImprovementPlot": {
-          "Type": "improvement_plot",
+        "ConvergencePlot": {
+          "Type": "convergence_plot",
           "enableGrouping": false,
           "MetricAxis": {
             "metricDescription": "iterations completed",
@@ -84,11 +84,11 @@
                 }
             }
         },
-    "ComparativeMetrics": {
+    "ComparativeAnalysis": {
       "ComparativeTable": {
         "experiment": true,
         "baseline": true,
-        "normalizedImprovement": true,
+        "relativeImprovement": true,
         "convergedAtIteration": true,
         "experimentBest": true,
         "baselineBest": true,
@@ -101,7 +101,7 @@
         },
         "regretType": ["iteration", "time"]
       },
-      "NormalizedImprovement": {
+      "RelativeImprovement": {
         "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
       },
       "PerformanceProfile": {

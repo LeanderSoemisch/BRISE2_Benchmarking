@@ -76,7 +76,7 @@ This module enables automated experiment evaluation, statistical analysis, and i
 - Statistical distribution comparison via box plots
 
 #### **Advanced Metrics**
-- **Normalized Improvement**: 
+- **Relative Improvement**: 
   - Objective value improvement
   - Time-to-target speedup
   - Iteration-to-target speedup
@@ -205,7 +205,7 @@ See `configs/benchmark_templates/` for examples.
     },
     "Plot_0": {
       "PlotType": {
-        "ImprovementPlot": { ... }
+        "ConvergencePlot": { ... }
       }
     }
   }
@@ -220,16 +220,16 @@ See `configs/benchmark_templates/` for examples.
 - `objectivesToMeasure`: List of objectives to analyze
 
 #### Plot Settings
-- `PlotType`: One of `ImprovementPlot`, `CustomPlot`, `BoxPlot`
+- `PlotType`: One of `ConvergencePlot`, `CustomPlot`, `BoxPlot`
 - `enableGrouping`: Group multiple runs of same test case
 - `normalize`: Apply normalization
 - `objectivesToPlot`: Which objectives to include
 
-#### Comparative Metrics
+#### Comparative Analysis
 - `showSummaryTable`: Show/hide comparative summary table tab in report
-- `ComparativeTable.speedupFactor`: Show/hide `NI (Time)` and `NI (Iterations)` columns
+- `ComparativeTable.speedupFactor`: Show/hide `RI (Time)` and `RI (Iterations)` columns
 - `RegretAnalysis.regretType`: `["iteration"]`, `["time"]`, or both
-- `NormalizedImprovement.improvementType`: Types of improvement to calculate
+- `RelativeImprovement.improvementType`: Types of improvement to calculate
 - `PerformanceProfile.objectivesToProfile`: Objectives for profile
 
 #### Grouping and Known Optima
@@ -330,7 +330,7 @@ See `configs/benchmark_templates/` for examples.
 
 ## Plot Types
 
-### 1. Improvement Plot
+### 1. Convergence Plot
 **Purpose**: Track optimization progress over iterations
 
 **Features**:
@@ -345,8 +345,8 @@ See `configs/benchmark_templates/` for examples.
 ```json
 "Plot_0": {
   "PlotType": {
-    "ImprovementPlot": {
-      "Type": "improvement_plot",
+    "ConvergencePlot": {
+      "Type": "convergence_plot",
       "enableGrouping": false,
       "MetricAxis": {
         "metricDescription": "iterations completed",
@@ -457,7 +457,7 @@ Run analysis only on existing dumps:
 ./init.sh analyse
 ```
 
-#### 2) Normalized Improvement
+#### 2) Relative Improvement
 
 - `objective_value`: compares best objective quality against baseline trajectory.
 - `time_to_target`: speedup factor based on runtime to target.
@@ -518,12 +518,12 @@ Example:
 
 #### 6) Comparative Table Controls
 
-`ComparativeMetrics.showSummaryTable` controls if the comparative table section is rendered in the report.
+`ComparativeAnalysis.showSummaryTable` controls if the comparative table section is rendered in the report.
 
-`ComparativeMetrics.ComparativeTable` controls columns:
+`ComparativeAnalysis.ComparativeTable` controls columns:
 
-- `normalizedImprovement` controls `NI (Objective)`
-- `speedupFactor` controls `NI (Time)` and `NI (Iterations)`
+- `relativeImprovement` controls `RI (Objective)`
+- `speedupFactor` controls `RI (Time)` and `RI (Iterations)`
 - `finalRegret`, `convergedAtIteration`, `experimentBest`, `baselineBest`, `experiment`, `baseline`
 
 #### 7) Minimal Comparative Config Example
@@ -534,19 +534,19 @@ Example:
     "KnownOptima": {
       "Y1": 0.0
     },
-    "ComparativeMetrics": {
+    "ComparativeAnalysis": {
       "showSummaryTable": true,
       "ComparativeTable": {
         "experiment": true,
         "baseline": true,
-        "normalizedImprovement": true,
+        "relativeImprovement": true,
         "speedupFactor": true,
         "convergedAtIteration": true,
         "experimentBest": true,
         "baselineBest": true,
         "finalRegret": true
       },
-      "NormalizedImprovement": {
+      "RelativeImprovement": {
         "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
       },
       "RegretAnalysis": {

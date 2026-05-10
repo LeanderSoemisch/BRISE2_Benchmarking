@@ -13,9 +13,9 @@ def _build_comparison_config() -> BenchmarkConfig:
                 "Resources": {"Folder": "./results/serialized/"},
                 "Experiment": {"name": "cmp", "description": "cmp", "objectivesToMeasure": ["Y1"]},
                 "Table": {},
-                "ComparativeMetrics": {
+                "ComparativeAnalysis": {
                     "RegretAnalysis": {"knownOptimum": 0.0, "regretType": ["iteration", "time"]},
-                    "NormalizedImprovement": {
+                    "RelativeImprovement": {
                         "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
                     },
                     "ComparativeTable": {},
@@ -59,9 +59,9 @@ def test_process_experiment_comparison_computes_all_requested_metrics():
     assert result.regret_curve == [9.0, 7.0, 5.0]
     assert result.regret_curve_time == [(0.0, 9.0), (10.0, 7.0), (20.0, 5.0)]
     assert result.final_regret == 5.0
-    assert result.normalized_improvement == (12.0 - 5.0) / (12.0 - 6.0)
-    assert result.normalized_improvement_time == 2.0
-    assert result.normalized_improvement_iterations == 1.0
+    assert result.relative_improvement == (12.0 - 5.0) / (12.0 - 6.0)
+    assert result.relative_improvement_time == 2.0
+    assert result.relative_improvement_iterations == 1.0
     assert result.converged_at_iteration == 3
 
 

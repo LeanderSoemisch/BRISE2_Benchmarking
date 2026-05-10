@@ -25,21 +25,21 @@ def test_load_config_returns_none_on_invalid_json(tmp_path):
     assert loaded is None
 
 
-def test_has_comparative_metrics_detects_enabled_sections():
+def test_has_comparative_analysis_detects_enabled_sections():
     config = {
         "Benchmark": {
-            "ComparativeMetrics": {
+            "ComparativeAnalysis": {
                 "RegretAnalysis": {"regretType": ["iteration"]},
                 "ComparativeTable": {},
             }
         }
     }
 
-    assert ConfigDetector.has_comparative_metrics(config) is True
+    assert ConfigDetector.has_comparative_analysis(config) is True
 
 
-def test_has_comparative_metrics_returns_false_without_sections():
-    config = {"Benchmark": {"ComparativeMetrics": {"RegretAnalysis": None}}}
+def test_has_comparative_analysis_returns_false_without_sections():
+    config = {"Benchmark": {"ComparativeAnalysis": {"RegretAnalysis": None}}}
 
-    assert ConfigDetector.has_comparative_metrics(config) is False
+    assert ConfigDetector.has_comparative_analysis(config) is False
 

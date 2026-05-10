@@ -29,7 +29,7 @@ cumulative_regret = sum(abs(value - known_optimum) for value in trajectory)
 **Time-Based Regret**:
 Returns list of `(timestamp, regret)` tuples for time-series analysis.
 
-#### Normalized Improvement
+#### Relative Improvement
 
 **Objective Value**:
 ```python
@@ -131,7 +131,7 @@ Result: Evaluate new approach against current production performance
 
 ## Comparative Metrics
 
-### Normalized Improvement
+### Relative Improvement
 
 **Definition**: Relative improvement over baseline
 
@@ -160,7 +160,7 @@ Result: Evaluate new approach against current production performance
 
 **Configuration**:
 ```json
-"NormalizedImprovement": {
+"RelativeImprovement": {
   "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
 }
 ```
@@ -234,11 +234,11 @@ Result: Evaluate new approach against current production performance
 
 ```json
 {
-  "ComparativeMetrics": {
+  "ComparativeAnalysis": {
     "ComparativeTable": {
       "experiment": true,
       "baseline": true,
-      "normalizedImprovement": true,
+      "relativeImprovement": true,
       "convergedAtIteration": true,
       "experimentBest": true,
       "baselineBest": true,
@@ -254,7 +254,7 @@ Result: Evaluate new approach against current production performance
         "time"
       ]
     },
-    "NormalizedImprovement": {
+    "RelativeImprovement": {
       "improvementType": [
         "objective_value",
         "time_to_target",
@@ -287,7 +287,7 @@ Result: Evaluate new approach against current production performance
 **Columns**:
 - Experiment name
 - Baseline type
-- Normalized improvement (objective, time, iterations)
+- Relative improvement (objective, time, iterations)
 - Converged at iteration
 - Experiment best value
 - Baseline best value
@@ -295,14 +295,14 @@ Result: Evaluate new approach against current production performance
 
 **Example**:
 ```
-Experiment    Baseline      NI (Obj)  NI (Time)  NI (Iter)  Converged  Exp Best  Base Best
+Experiment    Baseline      RI (Obj)  RI (Time)  RI (Iter)  Converged  Exp Best  Base Best
 test_case_0   random-search 1.40      0.03       -0.17      27         0.36      0.26
 test_case_0   grid-search   1.65      -0.01      -3.38      27         0.36      0.16
 ```
 
 ### Comparative Plots
 
-#### Normalized Improvement Plots
+#### Relative Improvement Plots
 
 **Type**: Grouped bar charts
 

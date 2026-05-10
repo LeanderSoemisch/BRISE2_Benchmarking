@@ -71,7 +71,7 @@ class ComparativeAnalysisOrchestrator:
                     for baseline_key, baseline in matching_baselines:
                         try:
                             known_optimum = None
-                            regret_config = self.config.comparative_metrics.regret_analysis
+                            regret_config = self.config.comparative_analysis.regret_analysis
                             if regret_config:
                                 if regret_config.optimum_per_objective and objective in regret_config.optimum_per_objective:
                                     known_optimum = regret_config.optimum_per_objective[objective]

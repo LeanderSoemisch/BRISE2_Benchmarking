@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from analyzer.comparison.comparative_metrics import (
     RegretCalculator,
-    NormalizedImprovementCalculator,
+    RelativeImprovementCalculator,
     PerformanceProfileCalculator
 )
 from analyzer.comparison.baseline_manager import BaselineResult
@@ -25,9 +25,9 @@ class ComparisonResult:
     final_regret: Optional[float] = None
     cumulative_regret: Optional[float] = None
 
-    normalized_improvement: Optional[float] = None
-    normalized_improvement_time: Optional[float] = None
-    normalized_improvement_iterations: Optional[float] = None
+    relative_improvement: Optional[float] = None
+    relative_improvement_time: Optional[float] = None
+    relative_improvement_iterations: Optional[float] = None
 
     converged_at_iteration: Optional[int] = None
 
@@ -43,7 +43,7 @@ class ComparisonProcessor:
     def __init__(self, config: BenchmarkConfig):
         self.config = config
         self.regret_calc = RegretCalculator()
-        self.normalized_calc = NormalizedImprovementCalculator()
+        self.relative_calc = RelativeImprovementCalculator()
         self.profile_calc = PerformanceProfileCalculator()
 
     def process_experiment_comparison(
@@ -73,11 +73,11 @@ class ComparisonProcessor:
             known_optimum=known_optimum
         )
 
-        if known_optimum is not None and self.config.comparative_metrics.regret_analysis is not None:
+        if known_optimum is not None and self.config.comparative_analysis.regret_analysis is not None:
             self._compute_regret(result, exp_trajectory, known_optimum, experiment_data, minimize)
 
-        if self.config.comparative_metrics.normalized_improvement is not None:
-            self._compute_normalized_improvement(result, exp_trajectory, baseline_trajectory, experiment_data, baseline, minimize)
+        if self.config.comparative_analysis.relative_improvement is not None:
+            self._compute_relative_improvement(result, exp_trajectory, baseline_trajectory, experiment_data, baseline, minimize)
 
         if exp_trajectory:
             result.converged_at_iteration = self._find_convergence_iteration(exp_trajectory, minimize)
@@ -85,7 +85,7 @@ class ComparisonProcessor:
         return result
 
     def _compute_regret(self, result: ComparisonResult, exp_trajectory: List[float], known_optimum: float, experiment_data: Dict, minimize: bool):
-        regret_types = self.config.comparative_metrics.regret_analysis.regret_type
+        regret_types = self.config.comparative_analysis.regret_analysis.regret_type
 
         if "iteration" in regret_types:
             result.regret_curve = self.regret_calc.calculate_regret_curve(exp_trajectory, known_optimum, minimize)
@@ -97,14 +97,14 @@ class ComparisonProcessor:
             if timestamps:
                 result.regret_curve_time = self.regret_calc.calculate_regret_curve_time(exp_trajectory, timestamps, known_optimum, minimize)
 
-    def _compute_normalized_improvement(self, result: ComparisonResult, exp_trajectory: List[float], baseline_trajectory: List[float], experiment_data: Dict, baseline: BaselineResult, minimize: bool):
-        improvement_types = self.config.comparative_metrics.normalized_improvement.improvement_type
+    def _compute_relative_improvement(self, result: ComparisonResult, exp_trajectory: List[float], baseline_trajectory: List[float], experiment_data: Dict, baseline: BaselineResult, minimize: bool):
+        improvement_types = self.config.comparative_analysis.relative_improvement.improvement_type
         exp_best = self._get_best_value(exp_trajectory, minimize)
         baseline_initial = baseline_trajectory[0] if baseline_trajectory else float('inf')
         baseline_final = baseline_trajectory[-1] if baseline_trajectory else float('inf')
 
         if "objective_value" in improvement_types:
-            result.normalized_improvement = self.normalized_calc.calculate_normalized_improvement(
+            result.relative_improvement = self.relative_calc.calculate_relative_improvement(
                 exp_best, baseline_initial, baseline_final, minimize
             )
 
@@ -112,10 +112,10 @@ class ComparisonProcessor:
             exp_time = self._extract_runtime(experiment_data)
             baseline_time = self._extract_baseline_runtime(baseline)
             if exp_time is not None and baseline_time is not None:
-                result.normalized_improvement_time = self.normalized_calc.calculate_time_normalized_improvement(exp_time, baseline_time)
+                result.relative_improvement_time = self.relative_calc.calculate_time_relative_improvement(exp_time, baseline_time)
 
         if "iteration_to_target" in improvement_types:
-            result.normalized_improvement_iterations = self.normalized_calc.calculate_iteration_normalized_improvement(
+            result.relative_improvement_iterations = self.relative_calc.calculate_iteration_relative_improvement(
                 exp_trajectory, baseline_trajectory, minimize
             )
 

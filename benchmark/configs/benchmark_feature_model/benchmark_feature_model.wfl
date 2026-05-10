@@ -56,9 +56,9 @@ Benchmark {
 
   Plot * {
     xor PlotType {
-      ImprovementPlot {
+      ConvergencePlot {
         Type -> predefined
-        [Type = 'improvement_plot']
+        [Type = 'convergence_plot']
 
         enableGrouping -> boolean
         title -> string
@@ -187,13 +187,13 @@ Benchmark {
     }
   }
 
-  ComparativeMetrics ? {
+  ComparativeAnalysis ? {
     showSummaryTable -> boolean
 
     ComparativeTable ? {
       experiment -> boolean
       baseline -> boolean
-      normalizedImprovement -> boolean
+      relativeImprovement -> boolean
       speedupFactor -> boolean
       convergedAtIteration -> boolean
       experimentBest -> boolean
@@ -208,7 +208,7 @@ Benchmark {
       [regretType in {"iteration", "time"}]
     }
 
-    NormalizedImprovement ? {
+    RelativeImprovement ? {
       improvementType -> array
       [improvementType in {"objective_value", "time_to_target", "iteration_to_target"}]
     }

@@ -36,11 +36,11 @@ class RegretCalculator:
         return sum(RegretCalculator.calculate_instant_regret(v, known_optimum, minimize) for v in objective_series)
 
 
-class NormalizedImprovementCalculator:
-    """Calculates normalized improvement relative to baseline"""
+class RelativeImprovementCalculator:
+    """Calculates relative improvement vs baseline"""
 
     @staticmethod
-    def calculate_normalized_improvement(experiment_value: float, baseline_value: float, reference_value: float, minimize: bool = True) -> float:
+    def calculate_relative_improvement(experiment_value: float, baseline_value: float, reference_value: float, minimize: bool = True) -> float:
         numerator = (baseline_value - experiment_value) if minimize else (experiment_value - baseline_value)
         denominator = (baseline_value - reference_value) if minimize else (reference_value - baseline_value)
         if abs(denominator) < 1e-10:
@@ -48,14 +48,14 @@ class NormalizedImprovementCalculator:
         return numerator / denominator
 
     @staticmethod
-    def calculate_time_normalized_improvement(experiment_time: float, baseline_time: float) -> Optional[float]:
+    def calculate_time_relative_improvement(experiment_time: float, baseline_time: float) -> Optional[float]:
         """Returns speedup ratio: baseline_time / experiment_time. >1 = faster than baseline."""
         if experiment_time <= 0:
             return None
         return max(0.0, min(10.0, baseline_time / experiment_time))
 
     @staticmethod
-    def calculate_iteration_normalized_improvement(
+    def calculate_iteration_relative_improvement(
         experiment_trajectory: List[float],
         baseline_trajectory: List[float],
         minimize: bool = True

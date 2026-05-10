@@ -1,7 +1,7 @@
 import numpy as np
 
 from analyzer.comparison.comparative_metrics import (
-    NormalizedImprovementCalculator,
+    RelativeImprovementCalculator,
     PerformanceProfileCalculator,
     RegretCalculator,
 )
@@ -17,20 +17,20 @@ def test_regret_curve_time_requires_same_lengths():
     assert timed == []
 
 
-def test_normalized_improvement_handles_zero_denominator_edge_cases():
-    calc = NormalizedImprovementCalculator()
+def test_relative_improvement_handles_zero_denominator_edge_cases():
+    calc = RelativeImprovementCalculator()
 
-    assert calc.calculate_normalized_improvement(10.0, 10.0, 10.0, minimize=True) == 0.0
-    assert calc.calculate_normalized_improvement(8.0, 10.0, 10.0, minimize=True) == 1.0
-    assert calc.calculate_normalized_improvement(12.0, 10.0, 10.0, minimize=True) == -1.0
+    assert calc.calculate_relative_improvement(10.0, 10.0, 10.0, minimize=True) == 0.0
+    assert calc.calculate_relative_improvement(8.0, 10.0, 10.0, minimize=True) == 1.0
+    assert calc.calculate_relative_improvement(12.0, 10.0, 10.0, minimize=True) == -1.0
 
 
-def test_time_and_iteration_normalized_improvement_are_clipped_and_guarded():
-    calc = NormalizedImprovementCalculator()
+def test_time_and_iteration_relative_improvement_are_clipped_and_guarded():
+    calc = RelativeImprovementCalculator()
 
-    assert calc.calculate_time_normalized_improvement(experiment_time=5.0, baseline_time=100.0) == 10.0
-    assert calc.calculate_time_normalized_improvement(experiment_time=0.0, baseline_time=10.0) is None
-    assert calc.calculate_iteration_normalized_improvement([3.0, 2.0], [4.0, 3.0, 2.0], minimize=True) == 1.5
+    assert calc.calculate_time_relative_improvement(experiment_time=5.0, baseline_time=100.0) == 10.0
+    assert calc.calculate_time_relative_improvement(experiment_time=0.0, baseline_time=10.0) is None
+    assert calc.calculate_iteration_relative_improvement([3.0, 2.0], [4.0, 3.0, 2.0], minimize=True) == 1.5
 
 
 def test_performance_profile_calculator_builds_monotonic_profiles():

@@ -2,7 +2,7 @@ from .baseline_manager import BaselineManager, BaselineResult
 from .baseline_selector import BaselineSelector, SelectableExperiment
 from .comparative_metrics import (
     RegretCalculator,
-    NormalizedImprovementCalculator,
+    RelativeImprovementCalculator,
     PerformanceProfileCalculator
 )
 from .comparison_processor import ComparisonProcessor, ComparisonResult
@@ -13,7 +13,7 @@ __all__ = [
     'BaselineSelector',
     'SelectableExperiment',
     'RegretCalculator',
-    'NormalizedImprovementCalculator',
+    'RelativeImprovementCalculator',
     'PerformanceProfileCalculator',
     'ComparisonProcessor',
     'ComparisonResult',
