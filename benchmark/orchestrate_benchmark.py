@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import shutil
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,14 @@ def analyze(
 
         config = BenchmarkConfig.from_json(config_dict)
 
+        # Respect config output directory when user didn't override output paths.
+        default_html = "./results/reports/benchmark_report.html"
+        default_csv = "./results/reports/benchmark_all_objectives.csv"
+        if output_html == default_html and config.output_directory:
+            output_html = str(Path(config.output_directory) / "benchmark_report.html")
+        if output_csv == default_csv and config.output_directory:
+            output_csv = str(Path(config.output_directory) / "benchmark_all_objectives.csv")
+
         has_comparative_analysis = ConfigDetector.has_comparative_analysis(config_dict)
         if has_comparative_analysis:
             logging.info("Comparative metrics detected - comparative analysis will be performed")
@@ -79,6 +88,23 @@ def analyze(
             from analyzer.orchestration import BenchmarkAnalyzer
             analyzer = BenchmarkAnalyzer(config)
             analyzer.analyze(output_html, output_csv)
+
+        # Ensure default report path is available for init.sh show_report.
+        if output_html != default_html:
+            generated = Path(output_html)
+            fallback = Path(default_html)
+            if generated.exists() and not fallback.exists():
+                fallback.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(generated, fallback)
+                logging.info("Copied report to default location: %s", fallback)
+
+        if output_csv != default_csv:
+            generated_csv = Path(output_csv)
+            fallback_csv = Path(default_csv)
+            if generated_csv.exists() and not fallback_csv.exists():
+                fallback_csv.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(generated_csv, fallback_csv)
+                logging.info("Copied CSV to default location: %s", fallback_csv)
 
         logging.info(f"Analyzer completed: {output_html}, {output_csv}")
     except FileNotFoundError as fnf_err:

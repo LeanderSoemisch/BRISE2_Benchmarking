@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 
 logger = logging.getLogger(__name__)
 
 
 def _flatten_dict(d: Any, prefix: str = "", sep: str = ".") -> Dict[str, Any]:
-    """Recursively flatten a nested dict into dot-path keys."""
+    """Recursively flatten a nested dict into dot-path keys (stops at lists and non-dict values)."""
     result = {}
     if isinstance(d, dict):
         for k, v in d.items():
@@ -21,18 +21,40 @@ def _flatten_dict(d: Any, prefix: str = "", sep: str = ".") -> Dict[str, Any]:
     return result
 
 
+def _nested_get(d: Any, parts: List[str]) -> Any:
+    """Walk a nested structure (dicts and lists) using a list of path parts."""
+    current = d
+    for part in parts:
+        if current is None:
+            return None
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list):
+            try:
+                current = current[int(part)]
+            except (ValueError, IndexError):
+                return None
+        else:
+            return None
+    return current
+
+
 class ExperimentMetadata:
     """Extracts a flat, dot-addressable metadata dict from an experiment."""
 
     @staticmethod
     def extract(exp: Any) -> Dict[str, Any]:
-        meta: Dict[str, Any] = {"filename": getattr(exp, "_source_filename", "") or "",
-                                "exp_name": getattr(exp, "name", "") or "", "exp_id": getattr(exp, "id", "") or "",
-                                "num_measured": len(getattr(exp, "measured_configurations", []))}
+        meta: Dict[str, Any] = {
+            "filename": getattr(exp, "_source_filename", "") or "",
+            "exp_name": getattr(exp, "name", "") or "",
+            "exp_id": getattr(exp, "id", "") or "",
+            "num_measured": len(getattr(exp, "measured_configurations", [])),
+        }
 
         desc = getattr(exp, "description", None)
         if isinstance(desc, dict):
             meta.update(_flatten_dict(desc, prefix="description"))
+            meta["_raw_description"] = desc
         elif desc is not None:
             logger.warning(
                 "Experiment '%s' has non-dict description of type '%s'",
@@ -41,14 +63,13 @@ class ExperimentMetadata:
             )
 
         ExperimentMetadata._add_aliases(meta, exp)
-
         return meta
 
     @staticmethod
     def _add_aliases(meta: Dict[str, Any], exp: Any) -> None:
-        desc = getattr(exp, "description", None)
-        desc_dict = desc if isinstance(desc, dict) else {}
+        desc_dict = meta.get("_raw_description") or {}
 
+        # --- Simple direct aliases ---
         task_name = meta.get("description.TaskConfiguration.TaskName", "")
         meta["task_name"] = str(task_name) if task_name else ""
 
@@ -63,11 +84,27 @@ class ExperimentMetadata:
         hp = meta.get("description.TaskConfiguration.Scenario.Hyperparameters", "")
         meta["hyperparams_mode"] = str(hp) if hp else ""
 
-        predictor = desc_dict.get("Predictor", {}) if isinstance(desc_dict.get("Predictor", {}), dict) else {}
-        models = predictor.get("models", []) if isinstance(predictor.get("models", []), list) else []
-        meta["model_types"] = [m.get("Type", "") for m in models if isinstance(m, dict)]
+        datafile = meta.get("description.DomainDescription.DataFile", "")
+        meta["domain_datafile"] = str(datafile)
+        meta["mh_type"] = ExperimentMetadata._parse_mh_type(str(datafile))
 
-        cfgs = getattr(exp, 'measured_configurations', [])
+        # --- Model types from Predictor.models list (new schema) ---
+        predictor = desc_dict.get("Predictor", {}) if isinstance(desc_dict.get("Predictor"), dict) else {}
+        models = predictor.get("models", []) if isinstance(predictor.get("models"), list) else []
+        meta["model_types_list"] = [
+            m.get("Type", "").split(".")[-1]
+            for m in models if isinstance(m, dict)
+        ]
+
+        # --- Legacy schema fallback: ModelConfiguration.ModelType (old BRISE format) ---
+        # Old experiments store a single surrogate name ("BO" for TPE-like, "brr" for BRR)
+        # under ModelConfiguration instead of a Predictor.models list.
+        mc = desc_dict.get("ModelConfiguration")
+        legacy_mt = mc.get("ModelType", "") if isinstance(mc, dict) else ""
+        meta["legacy_model_type"] = legacy_mt
+
+        # --- Hyperparameter values of first measured configuration ---
+        cfgs = getattr(exp, "measured_configurations", [])
         meta["first_param_values"] = {}
         if cfgs:
             hyperparams = getattr(cfgs[0], "hyperparameters", None)
@@ -77,135 +114,118 @@ class ExperimentMetadata:
                 try:
                     meta["first_param_values"] = dict(hyperparams)
                 except (TypeError, ValueError):
-                    logger.warning(
-                        "Experiment '%s' has non-mapping first hyperparameters of type '%s'",
-                        meta.get("exp_name") or meta.get("exp_id") or "unknown",
-                        type(hyperparams).__name__,
-                    )
+                    pass
 
-        dd = desc_dict.get("DomainDescription", {}) if isinstance(desc_dict.get("DomainDescription", {}), dict) else {}
-        datafile = dd.get("DataFile", "") if isinstance(dd, dict) else ""
-        meta["domain_datafile"] = str(datafile)
-        meta["mh_type"] = ExperimentMetadata._parse_mh_type(datafile)
-
-        predictor_models = predictor.get("models", []) if isinstance(predictor, dict) else []
-        model_type_names = [m.get("Type", "").split(".")[-1] for m in predictor_models if isinstance(m, dict)]
-
-        model_cfg = desc_dict.get("ModelConfiguration", {}) if isinstance(desc_dict.get("ModelConfiguration", {}), dict) else {}
-        legacy_model_type = model_cfg.get("ModelType", "") if isinstance(model_cfg, dict) else ""
-
-        meta["model_types_list"] = model_type_names
-        meta["tuning_variant"] = ExperimentMetadata._parse_tuning_variant(
-            model_type_names,
-            meta.get("hyperparams_mode", ""),
-            legacy_model_type=legacy_model_type,
-            mh_type=meta.get("mh_type", ""),
-        )
+        # --- Computed group variant ---
+        meta["hhpc_variant"] = ExperimentMetadata._compute_hhpc_variant(meta)
 
     @staticmethod
     def _parse_mh_type(datafile: str) -> str:
-        """Derive a human-readable MH label from the DomainDescription DataFile path.
-
-        Handles both old naming (``MHjMetalPyESData.json``) and new naming
-        with ConfigSpace suffix (``pyESDataConfigSpace.json``).
-
-        Examples::
-            MHjMetalPyESData.json / pyESDataConfigSpace.json  → py.ES
-            MHjMetalPySAData.json / pySADataConfigSpace.json  → py.SA
-            MHjMetalESData.json   / jESDataConfigSpace.json   → j.ES
-            HHData.json           / HHDataConfigSpace.json    → HH-PC
-        """
-        import os as _os
-        b = _os.path.basename(datafile).lower()
-        # Simulated-Annealing check must come before plain ES check
+        b = os.path.basename(datafile).lower()
+        if b.startswith("hh") or "hhdata" in b:
+            return "HH-PC"
         if "pysa" in b or ("py" in b and "sa" in b):
             return "py.SA"
         if "pyes" in b or ("jmetalpy" in b and "es" in b):
             return "py.ES"
         if "jes" in b or ("jmetal" in b and "es" in b):
             return "j.ES"
-        if b.startswith("hh") or "hhdata" in b:
-            return "HH-PC"
-        return _os.path.splitext(_os.path.basename(datafile))[0] if datafile else ""
+        return os.path.splitext(os.path.basename(datafile))[0] if datafile else ""
 
     @staticmethod
-    def _parse_tuning_variant(model_type_names: list, hyperparams_mode: str,
-                               legacy_model_type: str = "", mh_type: str = "") -> str:
-        """Encode the BRISE surrogate / control variant label.
+    def _compute_hhpc_variant(meta: Dict[str, Any]) -> str:
+        """Derive a group label from model types and domain type.
 
-        Supports two experiment formats:
+        Maps experiment model combinations to the six benchmark groups:
+        S-TPE, S-BRR, FRAMAB-H-TPE, FRAMAB-H-BRR, BRR-H-TPE, BRR-H-BRR.
+        Returns "" for default/baseline experiments that don't fit any group.
 
-        **New format** – ``Predictor.models`` list (full_benchmark):
-            ModelMock + TreeParzenEstimator  →  S-TPE / H-TPE (if MAB present)
-            ModelMock + BayesianRidge        →  S-BRR / H-BRR (if MAB present)
-            ModelMock only + default         →  Default
-            ModelMock only + tuned           →  Tuned
-            ModelMock only + random          →  Random
-
-        **Old format** – ``ModelConfiguration.ModelType`` (sparse_pc_and_hh_pc):
-            BO  (= Bayesian Optimisation / TPE)  →  S-TPE or H-TPE (if HH-PC)
-            brr (= Bayesian Ridge Regression)    →  S-BRR or H-BRR (if HH-PC)
+        Handles two BRISE config schemas:
+        - New schema (full_benchmark): surrogate read from ``Predictor.models[*].Type``
+          list (``model_types_list``).
+        - Legacy schema (sparse_pc_and_hh_pc): surrogate stored as a single string in
+          ``ModelConfiguration.ModelType`` (``legacy_model_type``).  The mapping is
+          ``"BO"`` → TPE (Bayesian/TPE surrogate) and ``"brr"`` → BRR (Bayesian Ridge
+          Regression surrogate).
         """
-        hp = (hyperparams_mode or "").lower()
+        model_types: List[str] = meta.get("model_types_list", [])
+        is_hh = meta.get("mh_type", "") == "HH-PC"
 
-        if legacy_model_type and not model_type_names:
-            lmt = legacy_model_type.lower()
-            is_hh = "hh" in mh_type.lower()
-            if "bo" in lmt:
-                return "H-TPE" if is_hh else "S-TPE"
-            if "brr" in lmt:
-                return "H-BRR" if is_hh else "S-BRR"
-            return legacy_model_type
+        # --- New-schema path (order-independent: check all model names) ---
+        if model_types:
+            names = [m.lower() for m in model_types]
+            has_mab = any("multiarmedbandit" in n for n in names)
+            has_tpe = any("treeparzen" in n for n in names)
+            has_brr = any("bayesianridge" in n for n in names)
+            has_mock = any("modelmock" in n for n in names)
 
-        if hp == "default":
-            return "Default"
-        if hp == "tuned":
-            return "Tuned"
-        if hp == "random":
-            return "Random"
+            lower = "TPE" if has_tpe else ("BRR" if has_brr else "")
 
-        names = [n.lower() for n in model_type_names]
-        has_mab = any("multiarmedbandit" in n for n in names)
-        has_tpe = any("treeparzen" in n for n in names)
-        has_brr = any("bayesianridge" in n for n in names)
+            if not is_hh:
+                if has_mock and lower:
+                    return f"S-{lower}"
+                return ""
+            # Hierarchical (HH-PC)
+            if has_mab:
+                return f"FRAMAB-H-{lower}" if lower else ""
+            if has_brr:
+                # Upper level is BRR; lower level is TPE if present, else BRR
+                lower_h = "TPE" if has_tpe else "BRR"
+                return f"BRR-H-{lower_h}"
+            return ""
 
-        if has_mab and has_tpe:
-            return "H-TPE"
-        if has_mab and has_brr:
-            return "H-BRR"
-        if has_mab:
-            return "H-TPE"
-        if has_tpe:
-            return "S-TPE"
-        if has_brr:
-            return "S-BRR"
-        return "S-TPE"  # ModelMock-only with provided → control baseline
+        # --- Legacy-schema fallback (no Predictor.models) ---
+        # "BO"  = BayesianRidge-based surrogate in the old BRISE format → S-BRR
+        # "brr" = TreeParzenEstimator-like surrogate in the old BRISE format → S-TPE
+        # (counter-intuitive naming in the legacy config — verified against hand-crafted report)
+        legacy_mt = meta.get("legacy_model_type", "").lower()
+        if legacy_mt == "bo":
+            legacy_lower = "BRR"
+        elif legacy_mt == "brr":
+            legacy_lower = "TPE"
+        else:
+            return ""
+
+        # All legacy experiments with a recognised surrogate are sparse (flat
+        # search space), regardless of the MH/HH domain description used.
+        return f"S-{legacy_lower}"
 
     @staticmethod
     def get(meta: Dict[str, Any], path: str) -> Any:
-        """
-        Retrieve a value from the metadata dict by dot-path.
+        """Retrieve a value from the metadata dict by dot-path.
 
-        Supports both:
-          - Top-level aliases:  ``"problem_instance"``, ``"model_types"`` …
-          - Full dot-paths:     ``"description.TaskConfiguration.TaskName"``
-          - Sub-path shortcut:  ``"TaskConfiguration.TaskName"``  (tries with
-            ``"description."`` prefix automatically)
-          - Hyperparameter leaf: ``"first_param_values.low level heuristic"``
+        Lookup order:
+          1. Top-level aliases:  ``"problem_instance"``, ``"hhpc_variant"`` …
+          2. Full dot-paths:     ``"description.TaskConfiguration.TaskName"``
+          3. Sub-path shortcut:  ``"TaskConfiguration.TaskName"``
+             (prepends ``"description."`` automatically)
+          4. Hyperparameter leaf: ``"first_param_values.some_param"``
+          5. Raw nested traversal of the original description dict,
+             supporting list indices (e.g. ``"Predictor.models.0.Type"``).
         """
         if path in meta:
             return meta[path]
 
-        # try with "description." prefix
         desc_path = "description." + path
         if desc_path in meta:
             return meta[desc_path]
 
-        # walk first_param_values
-        fpv_prefix = "first_param_values."
-        if path.startswith(fpv_prefix):
-            key = path[len(fpv_prefix):]
+        if path.startswith("first_param_values."):
+            key = path[len("first_param_values."):]
             return meta.get("first_param_values", {}).get(key)
 
-        return None
+        # Walk the raw description using the path (supports nested dicts and list indices)
+        raw_desc = meta.get("_raw_description")
+        if raw_desc is not None:
+            parts = path.split(".")
+            # Try path directly in raw description
+            value = _nested_get(raw_desc, parts)
+            if value is not None:
+                return value
+            # Also strip a leading "description." prefix if present
+            if parts and parts[0] == "description":
+                value = _nested_get(raw_desc, parts[1:])
+                if value is not None:
+                    return value
 
+        return None

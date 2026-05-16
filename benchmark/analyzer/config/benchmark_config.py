@@ -57,6 +57,14 @@ class PlotConfig:
     title: Optional[str] = None
     filter_conditions: List[Any] = field(default_factory=list)   # List[MatchCondition]
     plot_grouping: Optional[Any] = None                           # Optional[CustomGroupingConfig]
+    # Absolute minimum: iteration index is drawn only if this many reps contribute.
+    # 1 = any sample shows (permissive). Higher values trim sparse tails.
+    min_reps: int = 1
+    # Relative minimum: fraction of the group's max rep count (0.0–1.0).
+    # When set, overrides min_reps. E.g. 0.5 means at least 50% of reps must
+    # contribute at an iteration for it to be drawn. Handles groups of
+    # different sizes without needing to hard-code an absolute count.
+    min_reps_ratio: Optional[float] = None
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -165,37 +173,60 @@ class MatchCondition:
 
 
 @dataclass
-class AutoGroupDimension:
-    """
-    Describes one dimension used when auto-grouping (no explicit rules).
+class ValueGroupEntry:
+    """Maps a concrete metadata value to a display label."""
+    value: str
+    display_name: str
 
-    ``path``   – dot-separated path into experiment metadata (same as MatchCondition.path).
-    ``label``  – human-readable prefix used in the generated group label.
-                 Defaults to the last segment of ``path``.
-    ``transform`` – optional: ``"basename"`` strips directory components from path-like
-                    values (e.g. ``"scenarios/tsp/kroA100.tsp"`` → ``"kroA100.tsp"``).
-    """
+
+@dataclass
+class ValueGroupSpec:
+    """Group experiments by a metadata path with explicit value-to-label mapping."""
     path: str
-    label: Optional[str] = None
-    transform: Optional[str] = None   # "basename" | None
+    groups: List[ValueGroupEntry] = field(default_factory=list)
 
 
 @dataclass
 class CustomGroupingConfig:
     """
-    Configuration for how experiments are grouped into legend lines within a plot.
+    Groups experiments into legend lines by matching a metadata path to explicit display labels.
 
-    Grouping is driven by ``auto_group_by`` dimensions. Experiments that share
-    the same extracted dimension values are placed in the same group.
-
-    A config is considered *active* (``is_configured``) when it defines at
-    least one auto-group dimension.
+    ``value_groups`` maps specific metadata values at a given path to display labels.
+    Experiments that don't match any entry fall back to their source filename.
     """
-    auto_group_by: List[AutoGroupDimension] = field(default_factory=list)
+    value_groups: List[ValueGroupSpec] = field(default_factory=list)
+    _value_lookup: Dict[str, Dict[str, str]] = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        lookup: Dict[str, Dict[str, str]] = {}
+        for spec in self.value_groups:
+            if not spec.path:
+                continue
+            path_map = lookup.setdefault(spec.path, {})
+            for entry in spec.groups:
+                path_map[str(entry.value)] = str(entry.display_name)
+        self._value_lookup = lookup
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.auto_group_by)
+        return bool(self.value_groups)
+
+    @property
+    def known_group_names(self) -> set:
+        return {entry.display_name for spec in self.value_groups for entry in spec.groups}
+
+    @property
+    def ordered_group_names(self) -> List[str]:
+        seen: set = set()
+        result: List[str] = []
+        for spec in self.value_groups:
+            for entry in spec.groups:
+                name = str(entry.display_name)
+                if name not in seen:
+                    seen.add(name)
+                    result.append(name)
+        return result
+
 
 @dataclass
 class BenchmarkConfig:
@@ -254,6 +285,21 @@ class BenchmarkConfig:
             metric_scale = metric_axis.get("scale", ScaleType.LINEAR.value)
             metric_type = BenchmarkConfig._parse_metric_type(metric_desc)
 
+        try:
+            min_reps = max(1, int(plot_data.get("minReps", 1)))
+        except (TypeError, ValueError):
+            min_reps = 1
+
+        min_reps_ratio: Optional[float] = None
+        raw_ratio = plot_data.get("minRepsRatio")
+        if raw_ratio is not None:
+            try:
+                parsed = float(raw_ratio)
+                if 0.0 < parsed <= 1.0:
+                    min_reps_ratio = parsed
+            except (TypeError, ValueError):
+                pass
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -269,6 +315,8 @@ class BenchmarkConfig:
             title=plot_data.get("title"),
             filter_conditions=filter_conditions,
             plot_grouping=plot_grouping,
+            min_reps=min_reps,
+            min_reps_ratio=min_reps_ratio,
         )
 
     @staticmethod
@@ -335,22 +383,34 @@ class BenchmarkConfig:
         )
 
     @staticmethod
-    def _parse_custom_grouping(grouping_dict: Dict[str, Any]) -> Optional["CustomGroupingConfig"]:
-        """Parse a CustomGrouping block.
-
-        Returns a configured :class:`CustomGroupingConfig` when the block
-        contains ``autoGroupBy`` dimensions, or ``None`` when absent/empty.
-        An explicit ``"enabled"`` flag is not required.
-        """
-        if not grouping_dict:
+    def _parse_custom_grouping(grouping_data: Dict[str, Any]) -> CustomGroupingConfig:
+        """Parse a CustomGrouping block."""
+        if not grouping_data:
             return None
 
-        auto_dims = BenchmarkConfig._parse_auto_group_dimensions(grouping_dict.get("autoGroupBy", []))
+        value_groups: List[ValueGroupSpec] = []
+        for spec in grouping_data.get("valueGroups", []) or []:
+            if not isinstance(spec, dict):
+                continue
+            path = spec.get("path", "")
+            if not path:
+                continue
+            entries: List[ValueGroupEntry] = []
+            for entry in spec.get("groups", []) or []:
+                if not isinstance(entry, dict):
+                    continue
+                value = entry.get("value")
+                display = entry.get("displayName") or entry.get("label")
+                if value is None or not display:
+                    continue
+                entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
+            if entries:
+                value_groups.append(ValueGroupSpec(path=path, groups=entries))
 
-        if not auto_dims:
+        if not value_groups:
             return None
 
-        return CustomGroupingConfig(auto_group_by=auto_dims)
+        return CustomGroupingConfig(value_groups=value_groups)
 
     @staticmethod
     def _parse_match_conditions(conditions: List[Dict[str, Any]]) -> List[MatchCondition]:
@@ -365,24 +425,6 @@ class BenchmarkConfig:
                 pattern=cond.get("pattern"),
             ))
         return parsed_conditions
-
-    @staticmethod
-    def _parse_auto_group_dimensions(dimensions: List[Any]) -> List[AutoGroupDimension]:
-        parsed_dimensions: List[AutoGroupDimension] = []
-        for dim in dimensions:
-            if isinstance(dim, str):
-                parsed_dimensions.append(AutoGroupDimension(path=dim))
-                continue
-            if isinstance(dim, dict):
-                path = dim.get("path", dim.get("name", ""))
-                if not path:
-                    continue
-                parsed_dimensions.append(AutoGroupDimension(
-                    path=path,
-                    label=dim.get("label"),
-                    transform=dim.get("transform"),
-                ))
-        return parsed_dimensions
 
     @staticmethod
     def _parse_comparative_analysis(comp_metrics_dict: Dict[str, Any],
@@ -415,10 +457,15 @@ class BenchmarkConfig:
             merged_per_obj = dict(known_optima or {})
             if explicit_per_obj:
                 merged_per_obj.update(explicit_per_obj)
+            regret_type_group = regret_dict.get("RegretType", {})
+            if regret_type_group and isinstance(regret_type_group, dict):
+                regret_type = [v["Type"] for v in regret_type_group.values() if isinstance(v, dict) and "Type" in v]
+            else:
+                regret_type = regret_dict.get("regretType", ["iteration"])
             regret_config = RegretAnalysisConfig(
                 known_optimum=regret_dict.get("knownOptimum"),
                 optimum_per_objective=merged_per_obj or None,
-                regret_type=regret_dict.get("regretType", ["iteration"])
+                regret_type=regret_type
             )
         elif known_optima:
             regret_config = RegretAnalysisConfig(optimum_per_objective=known_optima)
@@ -426,9 +473,15 @@ class BenchmarkConfig:
             regret_config = None
 
         relative_dict = comp_metrics_dict.get("RelativeImprovement", {})
-        relative_config = RelativeImprovementConfig(
-            improvement_type=relative_dict.get("improvementType", ["objective_value"])
-        ) if relative_dict is not None else None
+        if relative_dict is not None:
+            improvement_type_group = relative_dict.get("ImprovementType", {})
+            if improvement_type_group and isinstance(improvement_type_group, dict):
+                improvement_type = [v["Type"] for v in improvement_type_group.values() if isinstance(v, dict) and "Type" in v]
+            else:
+                improvement_type = relative_dict.get("improvementType", ["objective_value"])
+            relative_config = RelativeImprovementConfig(improvement_type=improvement_type)
+        else:
+            relative_config = None
 
         performance_dict = comp_metrics_dict.get("PerformanceProfile", {})
         performance_config = PerformanceProfileConfig(

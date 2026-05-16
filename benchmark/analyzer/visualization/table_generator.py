@@ -34,6 +34,9 @@ class TableGenerator:
                 rows.append(row)
         return rows
 
+    def build_row(self, exp: Any, objective: str, table_config: TableConfig) -> Optional[Dict[str, Any]]:
+        return self._build_experiment_row(exp, objective, table_config)
+
     def _build_experiment_row(self, exp: Any, objective: str, table_config: TableConfig,
                              comparative_data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Build table row for single experiment"""
@@ -103,7 +106,7 @@ class TableGenerator:
     def format_table(self, rows: List[Dict[str, Any]], table_config: TableConfig) -> str:
         """Format table rows as HTML with column filtering"""
         if not rows:
-            return "<p>No data available</p>"
+            return ""
 
         allowed_columns = self._get_allowed_columns(table_config)
         headers = self._order_headers(rows, allowed_columns)

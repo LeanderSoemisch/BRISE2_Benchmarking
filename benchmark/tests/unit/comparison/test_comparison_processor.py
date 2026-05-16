@@ -59,7 +59,7 @@ def test_process_experiment_comparison_computes_all_requested_metrics():
     assert result.regret_curve == [9.0, 7.0, 5.0]
     assert result.regret_curve_time == [(0.0, 9.0), (10.0, 7.0), (20.0, 5.0)]
     assert result.final_regret == 5.0
-    assert result.relative_improvement == (12.0 - 5.0) / (12.0 - 6.0)
+    assert result.relative_improvement == 6.0 / 5.0
     assert result.relative_improvement_time == 2.0
     assert result.relative_improvement_iterations == 1.0
     assert result.converged_at_iteration == 3
@@ -93,4 +93,3 @@ def test_process_experiment_comparison_respects_maximization_direction():
 
     assert result.regret_curve == [9.0, 7.0, 7.0]
     assert result.converged_at_iteration == 2
-

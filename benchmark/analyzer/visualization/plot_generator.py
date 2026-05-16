@@ -6,6 +6,16 @@ import plotly.graph_objs as go
 from analyzer.config import Constants, ScaleType
 from analyzer.config.benchmark_config import PlotConfig
 from analyzer.data_pipeline import ExperimentParser
+from analyzer.util.grouping_utils import compute_rep_threshold
+from analyzer.util.trajectory_utils import extract_baseline_trajectory, extract_best_so_far_series
+
+
+_LEGEND_STYLE = dict(
+    font=dict(size=13),
+    bgcolor='rgba(255, 255, 255, 0.75)',
+    bordercolor='rgba(0, 0, 0, 0.12)',
+    borderwidth=1,
+)
 
 
 class PlotGenerator:
@@ -13,6 +23,12 @@ class PlotGenerator:
 
     def __init__(self):
         self.parser = ExperimentParser()
+
+    @staticmethod
+    def _build_plot_title(objective: str, plot_config: PlotConfig, title_suffix: str = "") -> str:
+        if plot_config.title is not None:
+            return plot_config.title
+        return f"{objective}{title_suffix}"
 
     @staticmethod
     def _compute_robust_y_range(values: List[float], padding_ratio: float = 0.05) -> Optional[List[float]]:
@@ -70,8 +86,13 @@ class PlotGenerator:
         layout.setdefault('shapes', [])
         layout['shapes'].append(PlotGenerator._optimum_shape(known_optimum))
 
-    def _create_baseline_traces(self, baselines: Dict[str, Any], objective: str) -> Tuple[List[go.Scatter], List[float]]:
-        """Create baseline traces showing raw measured values per iteration."""
+    def _create_baseline_traces(
+        self,
+        baselines: Dict[str, Any],
+        objective: str,
+        objective_instance: Optional[str] = None,
+    ) -> Tuple[List[go.Scatter], List[float]]:
+        """Create baseline traces showing best-so-far values per iteration."""
         traces = []
         all_values = []
         baseline_colors = ['#888888', '#2d2d2d', '#d62728', '#ff7f0e', '#9467bd']
@@ -81,25 +102,16 @@ class PlotGenerator:
             color = baseline_colors[idx % len(baseline_colors)]
             dash = baseline_dashes[idx % len(baseline_dashes)]
             display_name = self.parser.build_display_name(baseline_key)
+            cache_key = objective_instance or objective
 
-            trajectory = None
-            if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
-                if not all(v == float('inf') for v in baseline_result.trajectory):
-                    trajectory = baseline_result.trajectory
-
-            if not trajectory and hasattr(baseline_result, 'raw_experiment'):
-                exp = baseline_result.raw_experiment
-                measured_configs = getattr(exp, 'measured_configurations', [])
-                if measured_configs:
-                    trajectory = []
-                    for config in measured_configs:
-                        results = getattr(config, 'averaged_result', None) or getattr(config, 'results', {})
-                        if results:
-                            value = results.get(objective)
-                            if value is None and hasattr(results, 'keys'):
-                                value = results[list(results.keys())[0]]
-                            if value is not None:
-                                trajectory.append(value)
+            trajectory = extract_baseline_trajectory(
+                baseline_result,
+                cache_key,
+                prefer_cached=True,
+                best_so_far_fallback=True,
+                minimize=True,
+                result_key=objective,
+            )
 
             if trajectory:
                 x_vals = list(range(len(trajectory)))
@@ -115,7 +127,8 @@ class PlotGenerator:
     def create_convergence_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
             plot_config: PlotConfig, baselines: Dict[str, Any] = None,
             known_optimum: Optional[float] = None,
-            title_suffix: str = "") -> go.Figure:
+            title_suffix: str = "",
+            objective_instance: Optional[str] = None) -> go.Figure:
         """Plot best-so-far objective values per iteration with optional known-optimum reference."""
         traces = []
         all_values = []
@@ -128,7 +141,7 @@ class PlotGenerator:
             traces.append(self._create_scatter_trace(x_vals, series, name, len(series) <= 1))
 
         if baselines:
-            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective, objective_instance=objective_instance)
             traces.extend(baseline_traces)
             all_values.extend(baseline_values)
             for baseline_result in baselines.values():
@@ -136,10 +149,11 @@ class PlotGenerator:
                     max_iterations = max(max_iterations, len(baseline_result.trajectory))
 
         layout = dict(
-            title=f'{objective} - {plot_config.metric_description}{title_suffix}',
+            title=self._build_plot_title(objective, plot_config, title_suffix),
             xaxis=dict(title=plot_config.metric_label,
                        range=[-0.5, max_iterations - 0.5 if max_iterations > 1 else 0.5]),
-            yaxis=dict(title=plot_config.objective_label)
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
         )
         y_range = self._compute_robust_y_range(all_values)
         if y_range:
@@ -154,7 +168,8 @@ class PlotGenerator:
     def create_custom_plot(self, objective: str, experiment_names: List[str], objective_series: List[List[float]],
             time_series: List[List[Optional[float]]], plot_config: PlotConfig,
             baselines: Dict[str, Any] = None,
-            known_optimum: Optional[float] = None) -> Optional[go.Figure]:
+            known_optimum: Optional[float] = None,
+            objective_instance: Optional[str] = None) -> Optional[go.Figure]:
         traces = []
         all_objective = []
 
@@ -168,7 +183,7 @@ class PlotGenerator:
             traces.append(self._create_scatter_trace(x_vals, y_vals, name, len(valid_pairs) <= 1))
 
         if baselines:
-            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective, objective_instance=objective_instance)
             traces.extend(baseline_traces)
             all_objective.extend(baseline_values)
 
@@ -176,9 +191,10 @@ class PlotGenerator:
             return None
 
         layout = dict(
-            title=f'{objective} - {plot_config.metric_description}',
+            title=self._build_plot_title(objective, plot_config),
             xaxis=dict(title=plot_config.metric_label),
-            yaxis=dict(title=plot_config.objective_label)
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
         )
         y_range = self._compute_robust_y_range(all_objective)
         if y_range:
@@ -194,7 +210,8 @@ class PlotGenerator:
             plot_config: PlotConfig, extractor: Any,
             baselines: Dict[str, Any] = None,
             title_suffix: str = "",
-            known_optimum: Optional[float] = None) -> Optional[go.Figure]:
+            known_optimum: Optional[float] = None,
+            objective_instance: Optional[str] = None) -> Optional[go.Figure]:
         """Create grouped convergence plot (mean ± std band) or box plot per group.
 
         The y-axis is auto-scaled to the data range (min/max + 5 % padding).
@@ -203,10 +220,16 @@ class PlotGenerator:
         if plot_config.plot_type == 'box_plot':
             return self._create_grouped_box_plot(
                 objective, experiment_groups, plot_config, extractor, baselines,
-                title_suffix=title_suffix, known_optimum=known_optimum)
+                title_suffix=title_suffix, known_optimum=known_optimum,
+                objective_instance=objective_instance)
 
         traces = []
         all_values = []
+
+        if baselines:
+            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective, objective_instance=objective_instance)
+            traces.extend(baseline_traces)
+            all_values.extend(baseline_values)
 
         for group_idx, (group_name, exp_list) in enumerate(experiment_groups.items()):
             color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
@@ -215,18 +238,15 @@ class PlotGenerator:
             grouped_data = extractor.extract_grouped_data(exp_list, objective, plot_config.metric_type)
             if not grouped_data:
                 continue
-            plot_data = self._prepare_grouped_plot_data(grouped_data)
+            plot_data = self._prepare_grouped_plot_data(
+                grouped_data, min_reps=plot_config.min_reps, min_reps_ratio=plot_config.min_reps_ratio
+            )
             if not plot_data:
                 continue
 
             x_vals, mean_y, upper_y, lower_y = plot_data
             all_values.extend(v for v in mean_y + upper_y + lower_y if v is not None)
             traces.extend(self._create_grouped_traces(x_vals, lower_y, upper_y, mean_y, group_name, color, fill_color))
-
-        if baselines:
-            baseline_traces, baseline_values = self._create_baseline_traces(baselines, objective)
-            traces.extend(baseline_traces)
-            all_values.extend(baseline_values)
 
         if not traces:
             return None
@@ -239,15 +259,170 @@ class PlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
+    def create_grouped_plot_from_series(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        extractor: Any,
+        baselines: Dict[str, Any] = None,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+        objective_instance: Optional[str] = None,
+    ) -> Optional[go.Figure]:
+        if plot_config.plot_type == 'box_plot':
+            return self.create_grouped_box_plot_from_series(
+                objective,
+                grouped_series,
+                plot_config,
+                baselines,
+                title_suffix=title_suffix,
+                known_optimum=known_optimum,
+                objective_instance=objective_instance,
+            )
+
+        traces = []
+        all_values = []
+
+        if baselines:
+            baseline_traces, baseline_values = self._create_baseline_traces(
+                baselines, objective, objective_instance=objective_instance
+            )
+            traces.extend(baseline_traces)
+            all_values.extend(baseline_values)
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+            fill_color = self._hex_to_rgba(color, alpha=0.2)
+            series_list = group_data.get('series_list', [])
+            time_series_list = group_data.get('time_series_list', [])
+
+            grouped_data = extractor.extract_grouped_series_data(series_list, plot_config.metric_type, time_series_list)
+            if not grouped_data:
+                continue
+            plot_data = self._prepare_grouped_plot_data(
+                grouped_data, min_reps=plot_config.min_reps, min_reps_ratio=plot_config.min_reps_ratio
+            )
+            if not plot_data:
+                continue
+
+            x_vals, mean_y, upper_y, lower_y = plot_data
+            all_values.extend(v for v in mean_y + upper_y + lower_y if v is not None)
+            traces.extend(self._create_grouped_traces(x_vals, lower_y, upper_y, mean_y, group_name, color, fill_color))
+
+        if not traces:
+            return None
+
+        layout = self._create_grouped_layout(
+            objective, plot_config, all_values, title_suffix=title_suffix, known_optimum=known_optimum
+        )
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        return go.Figure(data=traces, layout=layout)
+
+    def create_grouped_box_plot_from_series(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        baselines: Dict[str, Any] = None,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+        objective_instance: Optional[str] = None,
+    ) -> Optional[go.Figure]:
+        traces = []
+        all_values = []
+
+        if baselines:
+            for baseline_key, baseline_result in baselines.items():
+                baseline_values = self._extract_baseline_final_values(
+                    baseline_result,
+                    objective,
+                    objective_instance=objective_instance,
+                    extractor=None,
+                )
+                if baseline_values:
+                    all_values.extend(baseline_values)
+                    baseline_name = self.parser.build_display_name(baseline_key)
+                    traces.append(go.Box(
+                        y=baseline_values,
+                        name=baseline_name,
+                        boxmean=False,
+                        boxpoints=False,
+                        marker=dict(opacity=0.5, color='gray'),
+                        hovertemplate='%{y:.4f}<extra></extra>'
+                    ))
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            final_values = group_data.get('final_values', [])
+            if final_values:
+                color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+                all_values.extend(final_values)
+                traces.append(go.Box(
+                    y=final_values,
+                    name=group_name,
+                    boxmean=False,
+                    boxpoints=False,
+                    marker=dict(opacity=0.7, color=color),
+                    line=dict(color=color),
+                    hovertemplate='%{y:.4f}<extra></extra>'
+                ))
+
+        if not traces:
+            return None
+
+        layout = dict(
+            title=self._build_plot_title(objective, plot_config, title_suffix),
+            xaxis=dict(title='Test Case', automargin=True),
+            yaxis=dict(title=plot_config.objective_label, automargin=True),
+            showlegend=True, boxmode='overlay',
+            margin=dict(l=70, r=40, t=80, b=110),
+            legend=_LEGEND_STYLE,
+        )
+        range_values = all_values
+        if known_optimum is not None:
+            range_values = all_values + [known_optimum]
+        y_range = self._compute_robust_y_range(range_values, padding_ratio=0.12)
+        if y_range:
+            layout['yaxis']['range'] = y_range
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        self._apply_axis_config(layout, plot_config)
+        return go.Figure(data=traces, layout=layout)
+
     @staticmethod
-    def _prepare_grouped_plot_data(grouped_data: Dict[str, Any]) -> Optional[Tuple[List, List, List, List]]:
-        """Return ``(x_vals, mean_y, upper_y, lower_y)`` where the band is mean ± std."""
+    def _prepare_grouped_plot_data(grouped_data: Dict[str, Any],
+                                   min_reps: int = 1,
+                                   min_reps_ratio: Optional[float] = None) -> Optional[Tuple[List, List, List, List]]:
+        """Return ``(x_vals, mean_y, upper_y, lower_y)`` where the band is mean ± std.
+
+        Indices with fewer than the computed threshold of repetitions contributing
+        (per ``grouped_data['sample_counts']``) are dropped, trimming sparsely-sampled
+        tails where only a few long-running reps survive.
+
+        When ``min_reps_ratio`` is set (0.0–1.0) the threshold is computed as
+        ``max(1, round(n_reps * min_reps_ratio))`` where ``n_reps`` is the maximum
+        sample count across all indices.  This adapts to the actual group size so
+        that, e.g., a ratio of 0.5 always requires at least half the repetitions
+        regardless of how many there are.  ``min_reps`` is ignored when the ratio
+        is set.
+        """
         metric_vals = grouped_data['metric_values']
         mean_vals = grouped_data['mean_values']
         std_vals = grouped_data.get('std_values', [None] * len(mean_vals))
+        sample_counts = grouped_data.get('sample_counts', [None] * len(mean_vals))
 
-        valid_indices = [i for i in range(len(metric_vals))
-            if metric_vals[i] is not None and mean_vals[i] is not None]
+        threshold = compute_rep_threshold(min_reps, min_reps_ratio, sample_counts)
+
+        valid_indices = [
+            i for i in range(len(metric_vals))
+            if metric_vals[i] is not None and mean_vals[i] is not None
+            and (sample_counts[i] is None or sample_counts[i] >= threshold)
+        ]
         if not valid_indices:
             return None
 
@@ -281,9 +456,10 @@ class PlotGenerator:
                                 title_suffix: str = "",
                                 known_optimum: Optional[float] = None) -> Dict[str, Any]:
         layout = dict(
-            title=f'{objective}: ({plot_config.metric_description}){title_suffix}',
+            title=self._build_plot_title(objective, plot_config, title_suffix),
             xaxis=dict(title=plot_config.metric_label),
             yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
         )
         self._apply_axis_config(layout, plot_config)
         y_range = self._compute_robust_y_range(all_values)
@@ -295,47 +471,67 @@ class PlotGenerator:
                                  plot_config: PlotConfig, extractor: Any,
                                  baselines: Dict[str, Any] = None,
                                  title_suffix: str = "",
-                                 known_optimum: Optional[float] = None) -> Optional[go.Figure]:
+                                 known_optimum: Optional[float] = None,
+                                 objective_instance: Optional[str] = None) -> Optional[go.Figure]:
         traces = []
         all_values = []
 
-        for group_name, exp_list in experiment_groups.items():
+        if baselines:
+            for baseline_key, baseline_result in baselines.items():
+                baseline_values = self._extract_baseline_final_values(
+                    baseline_result,
+                    objective,
+                    objective_instance=objective_instance,
+                    extractor=extractor,
+                )
+                if baseline_values:
+                    all_values.extend(baseline_values)
+                    baseline_name = self.parser.build_display_name(baseline_key)
+                    traces.append(go.Box(
+                        y=baseline_values,
+                        name=baseline_name,
+                        boxmean=False,
+                        boxpoints=False,
+                        marker=dict(opacity=0.5, color='gray'),
+                        hovertemplate='%{y:.4f}<extra></extra>'
+                    ))
+
+        for group_idx, (group_name, exp_list) in enumerate(experiment_groups.items()):
             group_values = []
             for exp in exp_list:
                 trajectory = extractor.extract_objective_series(exp, objective)
                 if trajectory:
-                    group_values.extend(v for v in trajectory if v is not None and np.isfinite(v))
+                    final_value = trajectory[-1]
+                    if final_value is not None and np.isfinite(final_value):
+                        group_values.append(final_value)
             if group_values:
+                color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
                 all_values.extend(group_values)
-                traces.append(go.Box(y=group_values, name=group_name, boxmean='sd',
-                    marker=dict(opacity=0.7), hovertemplate='%{y:.4f}<extra></extra>'))
-
-        if baselines:
-            for baseline_key, baseline_result in baselines.items():
-                trajectory = None
-                if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
-                    if not all(v == float('inf') for v in baseline_result.trajectory):
-                        trajectory = baseline_result.trajectory
-                if trajectory:
-                    valid_values = [v for v in trajectory if v is not None and np.isfinite(v)]
-                    if valid_values:
-                        all_values.extend(valid_values)
-                        baseline_name = self.parser.build_display_name(baseline_key)
-                        traces.append(go.Box(y=valid_values, name=baseline_name,
-                            boxmean='sd', marker=dict(opacity=0.5, color='gray'),
-                            hovertemplate='%{y:.4f}<extra></extra>'))
+                traces.append(go.Box(
+                    y=group_values,
+                    name=group_name,
+                    boxmean=False,
+                    boxpoints=False,
+                    marker=dict(opacity=0.7, color=color),
+                    line=dict(color=color),
+                    hovertemplate='%{y:.4f}<extra></extra>'
+                ))
 
         if not traces:
             return None
 
         layout = dict(
-            title=f'{objective} - Grouped Distribution Comparison{title_suffix}',
+            title=self._build_plot_title(objective, plot_config, title_suffix),
             xaxis=dict(title='Test Case', automargin=True),
             yaxis=dict(title=plot_config.objective_label, automargin=True),
             showlegend=True, boxmode='overlay',
             margin=dict(l=70, r=40, t=80, b=110),
+            legend=_LEGEND_STYLE,
         )
-        y_range = self._compute_robust_y_range(all_values, padding_ratio=0.12)
+        range_values = all_values
+        if known_optimum is not None:
+            range_values = all_values + [known_optimum]
+        y_range = self._compute_robust_y_range(range_values, padding_ratio=0.12)
         if y_range:
             layout['yaxis']['range'] = y_range
         if known_optimum is not None:
@@ -345,45 +541,126 @@ class PlotGenerator:
         self._apply_axis_config(layout, plot_config)
         return go.Figure(data=traces, layout=layout)
 
+    @staticmethod
+    def _extract_baseline_final_values(
+        baseline_result: Any,
+        objective: str,
+        objective_instance: Optional[str] = None,
+        extractor: Optional[Any] = None,
+    ) -> List[float]:
+        raw_experiments = getattr(baseline_result, 'raw_experiments', None)
+        if raw_experiments:
+            filtered_experiments = raw_experiments
+            if objective_instance:
+                try:
+                    from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
+                    instance_matches = [
+                        exp for exp in raw_experiments
+                        if ExperimentMetadata.extract(exp).get("problem_instance") == objective_instance
+                    ]
+                    if instance_matches:
+                        filtered_experiments = instance_matches
+                except Exception:
+                    pass
+            values: List[float] = []
+            for exp in filtered_experiments:
+                if extractor is not None:
+                    trajectory = extractor.extract_objective_series(exp, objective)
+                else:
+                    trajectory = extract_best_so_far_series(
+                        exp, objective, minimize=True, only_enabled_improves=False
+                    )
+                if trajectory:
+                    final_value = trajectory[-1]
+                    if final_value is not None and np.isfinite(final_value):
+                        values.append(final_value)
+            return values
+
+        raw_experiment = getattr(baseline_result, 'raw_experiment', None)
+        if raw_experiment is not None:
+            if extractor is not None:
+                trajectory = extractor.extract_objective_series(raw_experiment, objective)
+            else:
+                trajectory = extract_best_so_far_series(
+                    raw_experiment, objective, minimize=True, only_enabled_improves=False
+                )
+            if trajectory:
+                final_value = trajectory[-1]
+                if final_value is not None and np.isfinite(final_value):
+                    return [final_value]
+            return []
+
+        cache_key = objective_instance or objective
+        trajectory = extract_baseline_trajectory(
+            baseline_result,
+            cache_key,
+            prefer_cached=True,
+            best_so_far_fallback=True,
+            minimize=True,
+            result_key=objective,
+        )
+        if trajectory:
+            final_value = trajectory[-1]
+            if final_value is not None and np.isfinite(final_value):
+                return [final_value]
+        return []
+
     def create_box_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
             plot_config: PlotConfig, baselines: Dict[str, Any] = None,
-            known_optimum: Optional[float] = None) -> go.Figure:
+            known_optimum: Optional[float] = None,
+            objective_instance: Optional[str] = None) -> go.Figure:
         traces = []
         all_values = []
 
         for series, name in zip(data_series, experiment_names):
             if not series:
                 continue
-            valid_values = [v for v in series if v is not None and np.isfinite(v)]
-            if not valid_values:
+            final_value = series[-1]
+            if final_value is None or not np.isfinite(final_value):
                 continue
-            all_values.extend(valid_values)
-            traces.append(go.Box(y=valid_values, name=name, boxmean='sd',
-                marker=dict(opacity=0.7), hovertemplate='%{y:.4f}<extra></extra>'))
+            all_values.append(final_value)
+            traces.append(go.Box(
+                y=[final_value],
+                name=name,
+                boxmean=False,
+                boxpoints=False,
+                marker=dict(opacity=0.7),
+                hovertemplate='%{y:.4f}<extra></extra>'
+            ))
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                trajectory = None
-                if hasattr(baseline_result, 'trajectory') and baseline_result.trajectory:
-                    if not all(v == float('inf') for v in baseline_result.trajectory):
-                        trajectory = baseline_result.trajectory
-                if trajectory:
-                    valid_values = [v for v in trajectory if v is not None and np.isfinite(v)]
-                    if valid_values:
-                        all_values.extend(valid_values)
-                        display_name = self.parser.build_display_name(baseline_key)
-                        traces.append(go.Box(y=valid_values, name=display_name, boxmean='sd',
-                            marker=dict(opacity=0.6, color='#808080'), line=dict(color='#606060'),
-                            hovertemplate='%{y:.4f}<extra></extra>'))
+                baseline_values = self._extract_baseline_final_values(
+                    baseline_result,
+                    objective,
+                    objective_instance=objective_instance,
+                    extractor=None,
+                )
+                if baseline_values:
+                    all_values.extend(baseline_values)
+                    display_name = self.parser.build_display_name(baseline_key)
+                    traces.append(go.Box(
+                        y=baseline_values,
+                        name=display_name,
+                        boxmean=False,
+                        boxpoints=False,
+                        marker=dict(opacity=0.6, color='#808080'),
+                        line=dict(color='#606060'),
+                        hovertemplate='%{y:.4f}<extra></extra>'
+                    ))
 
         layout = dict(
-            title=f'{objective} - Distribution Comparison',
+            title=self._build_plot_title(objective, plot_config),
             xaxis=dict(title='Algorithm', automargin=True),
             yaxis=dict(title=plot_config.objective_label, automargin=True),
             showlegend=True, boxmode='overlay',
             margin=dict(l=70, r=40, t=80, b=110),
+            legend=_LEGEND_STYLE,
         )
-        y_range = self._compute_robust_y_range(all_values, padding_ratio=0.12)
+        range_values = all_values
+        if known_optimum is not None:
+            range_values = all_values + [known_optimum]
+        y_range = self._compute_robust_y_range(range_values, padding_ratio=0.12)
         if y_range:
             layout['yaxis']['range'] = y_range
         if known_optimum is not None:

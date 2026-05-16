@@ -1,21 +1,5 @@
 // ----------------------Abstract features-----------------------
 
-abstract Axis {
-  Label -> string
-  Scale -> string
-}
-
-abstract ObjectiveAxis: Axis {
-  ObjectiveName -> string
-  Normalize -> boolean
-  Normalization -> string
-  Direction -> string
-}
-
-abstract MetricAxis: Axis {
-  MetricName -> string
-}
-
 abstract Hyperparameter {
   Type -> predefined
   Level -> integer
@@ -860,7 +844,7 @@ DefaultConfigurationHandler ? {
   }
 }
 
-// ----------------------Benchmark-----------------------
+// ----------------------Benchmark -----------------------
 // ----------------------Abstract Benchmark Features-----------------------
 
 abstract Axis {
@@ -882,6 +866,10 @@ abstract MetricAxis: Axis {
 // ----------------------Benchmark Features-----------------------
 
 Benchmark {
+  Resources {
+    Folder -> string
+  }
+
   Report {
     outputDirectory -> string
   }
@@ -893,7 +881,6 @@ Benchmark {
   }
 
   KnownOptima ? {
-    // Per-objective known optimum values (map-like structure)
     ObjectiveOptimum * {
       objective -> string
       optimum -> float
@@ -934,7 +921,7 @@ Benchmark {
         }
 
         CustomGrouping ? {
-          autoGroupBy -> array
+          valueGroups -> array
         }
 
         MetricAxis {
@@ -978,7 +965,7 @@ Benchmark {
           pattern -> string
         }
         CustomGrouping ? {
-          autoGroupBy -> array
+          valueGroups -> array
         }
 
         MetricAxis {
@@ -1020,7 +1007,7 @@ Benchmark {
           pattern -> string
         }
         CustomGrouping ? {
-          autoGroupBy -> array
+          valueGroups -> array
         }
 
         MetricAxis {
@@ -1065,15 +1052,34 @@ Benchmark {
     }
 
     RegretAnalysis ? {
-      // Cross-validate: RegretAnalysis requires KnownOptima to be specified.
-      [Benchmark.KnownOptima]
-      regretType -> array
-      [regretType in {"iteration", "time"}]
+      or RegretType {
+        Iteration {
+          Type -> predefined
+          [Type = "iteration"]
+        }
+        Time {
+          Type -> predefined
+          [Type = "time"]
+        }
+      }
+      [self requires Benchmark.KnownOptima]
     }
 
     RelativeImprovement ? {
-      improvementType -> array
-      [improvementType in {"objective_value", "time_to_target", "iteration_to_target"}]
+      or ImprovementType {
+        ObjectiveValue {
+          Type -> predefined
+          [Type = "objective_value"]
+        }
+        TimeToTarget {
+          Type -> predefined
+          [Type = "time_to_target"]
+        }
+        IterationToTarget {
+          Type -> predefined
+          [Type = "iteration_to_target"]
+        }
+      }
     }
 
     PerformanceProfile ? {

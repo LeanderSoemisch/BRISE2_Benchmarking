@@ -83,9 +83,9 @@ class ReportGenerator:
                 tab_id,
             ))
         parts.append(self._csv_download(objective, csv_files))
-        parts.append(f"<div class='table-wrapper'>"
-                     f"{self.table_generator.format_table(table_data.get(objective, []), self.config.table_config)}"
-                     f"</div>")
+        table_html = self.table_generator.format_table(table_data.get(objective, []), self.config.table_config)
+        if table_html:
+            parts.append(f"<div class='table-wrapper'>{table_html}</div>")
         parts.append("</div>")
         return "".join(parts)
 
@@ -103,7 +103,8 @@ class ReportGenerator:
                               table_rows: List[Dict[str, Any]],
                               comparative_csv_files: Dict[str, str], tab_id: str) -> str:
         parts = ["<div class='comparative-section'>"]
-        for i, fig in enumerate(figures):
+        for i in range(len(figures)):
+            fig = figures[i]
             plot_id = f"comp_plot_{tab_id}_{i}"
             parts.append(
                 f"<div class='plot-container'><div class='plot-wrapper' id='{plot_id}'>"
@@ -112,6 +113,7 @@ class ReportGenerator:
                 f"onclick='exportPlotAsSVG(\"{plot_id}\",\"{objective}_comparative_{i}\")'>Export as SVG</button>"
                 f"</div>"
             )
+            figures[i] = None
         if table_rows and self._show_comparative_table():
             parts.append(self._csv_download(
                 objective,
@@ -125,7 +127,8 @@ class ReportGenerator:
     @staticmethod
     def _render_figures(objective: str, figures: List[go.Figure], id_prefix: str) -> str:
         parts = []
-        for i, fig in enumerate(figures):
+        for i in range(len(figures)):
+            fig = figures[i]
             plot_id = f"plot_{id_prefix}_{i}"
             parts.append(
                 f"<div class='plot-container'><div class='plot-wrapper' id='{plot_id}'>"
@@ -134,6 +137,7 @@ class ReportGenerator:
                 f"onclick='exportPlotAsSVG(\"{plot_id}\",\"{objective}_plot{i}\")'>Export as SVG</button>"
                 f"</div>"
             )
+            figures[i] = None
         return "".join(parts)
 
     @staticmethod

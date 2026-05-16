@@ -40,12 +40,16 @@ class RelativeImprovementCalculator:
     """Calculates relative improvement vs baseline"""
 
     @staticmethod
-    def calculate_relative_improvement(experiment_value: float, baseline_value: float, reference_value: float, minimize: bool = True) -> float:
-        numerator = (baseline_value - experiment_value) if minimize else (experiment_value - baseline_value)
-        denominator = (baseline_value - reference_value) if minimize else (reference_value - baseline_value)
-        if abs(denominator) < 1e-10:
-            return 0.0 if abs(numerator) < 1e-10 else (1.0 if numerator > 0 else -1.0)
-        return numerator / denominator
+    def calculate_relative_improvement(
+        experiment_value: float,
+        baseline_value: float,
+        minimize: bool = True,
+    ) -> Optional[float]:
+        if experiment_value <= 0 or baseline_value <= 0:
+            return None
+        if minimize:
+            return baseline_value / experiment_value
+        return experiment_value / baseline_value
 
     @staticmethod
     def calculate_time_relative_improvement(experiment_time: float, baseline_time: float) -> Optional[float]:
