@@ -22,10 +22,35 @@ class ComparativePlotGenerator:
     ) -> Optional[go.Figure]:
         traces = []
         seen_experiments = {}
+        seen_baselines = {}
         for result in comparison_results:
-            exp_name = result.display_name or result.experiment_name
+            raw_name = result.display_name or result.experiment_name
+            exp_name = self.parser.build_display_name(raw_name)
             if exp_name not in seen_experiments:
                 seen_experiments[exp_name] = result
+            if result.baseline_type and result.baseline_type not in seen_baselines:
+                seen_baselines[result.baseline_type] = result
+
+        for idx, (baseline_type, result) in enumerate(seen_baselines.items()):
+            baseline_label = self.parser.build_display_name(baseline_type)
+            color = self.BASELINE_COLORS[idx % len(self.BASELINE_COLORS)]
+            if regret_type == "time":
+                curve = result.baseline_regret_curve_time
+                if not curve:
+                    continue
+                x_vals = [t for t, _ in curve]
+                y_vals = [r for _, r in curve]
+            else:
+                curve = result.baseline_regret_curve
+                if not curve:
+                    continue
+                x_vals = list(range(len(curve)))
+                y_vals = curve
+
+            traces.append(go.Scatter(
+                x=x_vals, y=y_vals, mode='lines', name=baseline_label,
+                line=dict(color=color, dash='dash', width=2.5)
+            ))
 
         for idx, (exp_name, result) in enumerate(seen_experiments.items()):
             color = Constants.DEFAULT_COLORS[idx % len(Constants.DEFAULT_COLORS)]
@@ -59,7 +84,9 @@ class ComparativePlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
-    BASELINE_COLORS = ['#2980b9', '#e67e22', '#27ae60', '#c0392b', '#8e44ad']
+    BASELINE_COLORS = ['#888888', '#555555', '#2d2d2d', '#aaaaaa', '#666666']
+
+    _IMPROVEMENT_BAR_COLOR = '#1f77b4'
 
     def plot_relative_improvement(
         self,
@@ -73,7 +100,12 @@ class ComparativePlotGenerator:
             "iteration_to_target": "relative_improvement_iterations"
         }
         attr_name = improvement_attr.get(improvement_type, "relative_improvement")
-        is_ratio_based = improvement_type in ["time_to_target", "iteration_to_target"]
+        is_ratio_based = improvement_type in ["objective_value", "time_to_target", "iteration_to_target"]
+        ratio_labels = {
+            "objective_value": "Objective Ratio (base/exp)",
+            "time_to_target": "Time Ratio (exp/base)",
+            "iteration_to_target": "Iteration Ratio (exp/base)",
+        }
 
         experiment_names, improvements, baseline_types = [], [], []
         for result in comparison_results:
@@ -95,11 +127,13 @@ class ComparativePlotGenerator:
 
         ordered_experiments = list(dict.fromkeys(experiment_names))
         traces = []
+        aligned_values: List[float] = []
 
         for idx, (baseline_type, data) in enumerate(baseline_type_groups.items()):
             color = self.BASELINE_COLORS[idx % len(self.BASELINE_COLORS)]
             imp_map = dict(zip(data['names'], data['improvements']))
             aligned_y = [imp_map.get(exp) for exp in ordered_experiments]
+            aligned_values.extend([v for v in aligned_y if v is not None and np.isfinite(v)])
             text_labels = [
                 f"{val:.2f}x" if (val is not None and abs(val) >= 0.1) else ''
                 for val in aligned_y
@@ -110,7 +144,7 @@ class ComparativePlotGenerator:
                 x=ordered_experiments,
                 y=aligned_y,
                 name=f"vs {baseline_label}",
-                marker=dict(color=color, line=dict(color=color, width=1)),
+                marker=dict(color=self._IMPROVEMENT_BAR_COLOR, line=dict(color=self._IMPROVEMENT_BAR_COLOR, width=1)),
                 text=text_labels,
                 textposition='outside',
                 textfont=dict(size=12, color='#2c3e50'),
@@ -118,17 +152,9 @@ class ComparativePlotGenerator:
                 cliponaxis=False,
             ))
 
-        if is_ratio_based and ordered_experiments:
-            traces.append(go.Scatter(
-                x=ordered_experiments,
-                y=[1.0] * len(ordered_experiments),
-                mode='lines',
-                line=dict(color='#7f8c8d', dash='dot', width=1.2),
-                hoverinfo='skip',
-                showlegend=False,
-            ))
-
-        finite_vals = [v for v in improvements if v is not None and np.isfinite(v)]
+        finite_vals = aligned_values
+        if not finite_vals:
+            return None
         min_val, max_val = min(finite_vals), max(finite_vals)
         if is_ratio_based:
             center = 1.0
@@ -142,16 +168,16 @@ class ComparativePlotGenerator:
             y_max = center + 1.2 * span
 
         data_pad = 0.1 * (max_val - min_val) if max_val != min_val else 0.1 * (abs(max_val) if max_val != 0 else 1.0)
-        min(y_min, min_val - data_pad)
+        y_min = min(y_min, min_val - data_pad)
         y_max = max(y_max, max_val + data_pad)
 
-        y_axis_min = 0.0
+        y_axis_min = max(0.0, y_min) if is_ratio_based else y_min
 
         layout = dict(
             title=title,
             xaxis=dict(title='Experiment', tickangle=45, automargin=True),
             yaxis=dict(
-                title='Speedup Factor' if is_ratio_based else 'Relative Improvement',
+                title=ratio_labels.get(improvement_type, 'Relative Improvement'),
                 range=[y_axis_min, y_max],
                 automargin=True,
             ),
@@ -164,6 +190,12 @@ class ComparativePlotGenerator:
             ),
             margin=dict(l=70, r=140, t=80, b=170),
         )
+        if is_ratio_based:
+            layout['shapes'] = [dict(
+                type='line', xref='paper', x0=0, x1=1,
+                yref='y', y0=1.0, y1=1.0,
+                line=dict(color='gray', dash='dot', width=1.5),
+            )]
 
         return go.Figure(data=traces, layout=layout)
 
@@ -176,15 +208,15 @@ class ComparativePlotGenerator:
         if not performance_profiles:
             return None
 
-        traces = [
-            go.Scatter(
+        traces = []
+        for idx, (test_case_name, (tau_values, rho_values)) in enumerate(performance_profiles.items()):
+            color = Constants.DEFAULT_COLORS[idx % len(Constants.DEFAULT_COLORS)]
+            traces.append(go.Scatter(
                 x=tau_values.tolist(), y=rho_values.tolist(),
                 mode='lines+markers', name=test_case_name,
-                line=dict(color=Constants.DEFAULT_COLORS[idx % len(Constants.DEFAULT_COLORS)], width=2),
+                line=dict(color=color, width=2),
                 marker=dict(size=4)
-            )
-            for idx, (test_case_name, (tau_values, rho_values)) in enumerate(performance_profiles.items())
-        ]
+            ))
 
         all_tau_max = max(max(tau) for tau, _ in performance_profiles.values())
 
@@ -197,4 +229,3 @@ class ComparativePlotGenerator:
         )
 
         return go.Figure(data=traces, layout=layout)
-

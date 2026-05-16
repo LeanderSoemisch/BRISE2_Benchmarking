@@ -1,8 +1,20 @@
 """Configuration module"""
 
-from analyzer.config.benchmark_config import (BenchmarkConfig, PlotConfig, TableConfig, Constants,
-                                              PlotType, MetricType, ScaleType, NormalizationType, OptimizationDirection,
-                                              MatchCondition, AutoGroupDimension, CustomGroupingConfig)
+from analyzer.config.benchmark_config import (
+    BenchmarkConfig,
+    PlotConfig,
+    TableConfig,
+    Constants,
+    PlotType,
+    MetricType,
+    ScaleType,
+    NormalizationType,
+    OptimizationDirection,
+    MatchCondition,
+    ValueGroupEntry,
+    ValueGroupSpec,
+    CustomGroupingConfig,
+)
 
 __all__ = [
     'BenchmarkConfig',
@@ -15,7 +27,7 @@ __all__ = [
     'NormalizationType',
     'OptimizationDirection',
     'MatchCondition',
-    'AutoGroupDimension',
+    'ValueGroupEntry',
+    'ValueGroupSpec',
     'CustomGroupingConfig',
 ]
-

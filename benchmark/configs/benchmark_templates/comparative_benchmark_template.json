@@ -99,10 +99,17 @@
         "optimumPerObjective": {
           "Y1": 0.0
         },
-        "regretType": ["iteration", "time"]
+        "RegretType": {
+          "Iteration": {"Type": "iteration"},
+          "Time": {"Type": "time"}
+        }
       },
       "RelativeImprovement": {
-        "improvementType": ["objective_value", "time_to_target", "iteration_to_target"]
+        "ImprovementType": {
+          "ObjectiveValue": {"Type": "objective_value"},
+          "TimeToTarget": {"Type": "time_to_target"},
+          "IterationToTarget": {"Type": "iteration_to_target"}
+        }
       },
       "PerformanceProfile": {
         "tauMax": 5.0,

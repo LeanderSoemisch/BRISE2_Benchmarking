@@ -1,13 +1,15 @@
 import logging
+import math
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Any, Dict, Optional, Tuple
+from typing import List, Any, Dict, Optional, Tuple, Set
 
 import pandas as pd
 import plotly.graph_objs as go
 
 from analyzer.config import BenchmarkConfig, NormalizationType
-from analyzer.data_pipeline import (ExperimentLoader, ExperimentParser, MetricExtractor, DataProcessor,
-                                    ExperimentGrouper)
+from analyzer.data_pipeline import ExperimentLoader, ExperimentParser, MetricExtractor, DataProcessor
+from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
 from analyzer.visualization import (PlotGenerator, TableGenerator, ReportGenerator)
 from analyzer.visualization.comparative_plots import ComparativePlotGenerator
 from analyzer.orchestration.comparative_orchestrator import ComparativeAnalysisOrchestrator
@@ -16,8 +18,20 @@ from analyzer.orchestration.analysis_services import (
     ComparativeTableService,
     ExportService,
 )
+from analyzer.util.grouping_utils import build_group_label, matches_conditions
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExperimentSeriesItem:
+    name: str
+    display_name: str
+    source_filename: str
+    metadata: Dict[str, Any]
+    series: List[float]
+    time_series: List[Optional[float]]
+    runtime: Optional[float]
 
 
 class BenchmarkAnalyzer:
@@ -43,21 +57,17 @@ class BenchmarkAnalyzer:
 
     def analyze(self, output_html: str, output_csv: str):
         """Main analysis entry point"""
-        experiments = self._load_experiments()
-
         baselines = self.comparative_orchestrator.load_baseline_experiments() \
             if self.comparative_orchestrator else {}
+        baseline_names = self._build_baseline_name_set(baselines)
+        baseline_group_labels: Set[str] = set(baselines.keys()) if baselines else set()
 
-        # Experiments selected as baselines must not also appear as regular experiments
-        # (they come from the same results folder and would otherwise be counted twice).
-        filtered_experiments = self._exclude_baselines(experiments, baselines)
+        series_by_objective, tables_by_objective, result_keys = self._stream_experiment_items(
+            baseline_names, baseline_group_labels
+        )
+        logger.info(f"Objectives: {list(series_by_objective.keys())}")
 
-        # Partition experiments per objective (result key or problem instance name)
-        objective_partitions = self._partition_by_objective(filtered_experiments)
-        logger.info(f"Objectives: {list(objective_partitions.keys())}")
-
-        objective_plots = self._generate_plots(objective_partitions, baselines)
-        tables_by_objective = self._build_tables(objective_partitions)
+        objective_plots = self._generate_plots_from_series(series_by_objective, baselines, result_keys)
 
         comparative_results = {}
         comparative_plots = {}
@@ -66,8 +76,9 @@ class BenchmarkAnalyzer:
 
         if self.comparative_orchestrator and self.config.comparative_analysis.is_active():
             logger.info("Computing comparative metrics...")
-            comparative_results = self.comparative_orchestrator.compute_comparative_metrics(
-                filtered_experiments, baselines
+            grouping_config = self.comparative_orchestrator._get_comparative_grouping_config()
+            comparative_results = self.comparative_orchestrator.compute_comparative_metrics_streaming(
+                series_by_objective, baselines, result_keys, grouping_config=grouping_config
             )
             if comparative_results:
                 logger.info("Generating comparative plots...")
@@ -77,6 +88,7 @@ class BenchmarkAnalyzer:
                     logger.info("Computing global performance profile...")
                     performance_profile_plot = self._generate_global_performance_profile(comparative_results)
 
+        del series_by_objective
         csv_files, comparative_csv_files, zip_file = self._save_csv_files(
             tables_by_objective,
             comparative_tables,
@@ -96,55 +108,173 @@ class BenchmarkAnalyzer:
             performance_profile_plot=performance_profile_plot,
         )
 
-    def _load_experiments(self) -> List[Any]:
-        logger.info(f"Loading experiments from {self.config.results_folder}...")
-        experiments = self.loader.load_all_experiments()
-        logger.info(f"Loaded {len(experiments)} experiments")
-        return experiments
+    def _stream_experiment_items(
+        self,
+        baseline_names: Set[str],
+        baseline_group_labels: Set[str] = None,
+        batch_size: int = 50,
+    ) -> Tuple[Dict[str, List[ExperimentSeriesItem]], Dict[str, List[Dict[str, Any]]], Dict[str, str]]:
+        objectives = list(self.config.objectives_to_measure or [])
+        if not objectives:
+            objectives = self._discover_objectives(batch_size)
+
+        series_by_objective: Dict[str, List[ExperimentSeriesItem]] = {obj: [] for obj in objectives}
+        tables_by_objective: Dict[str, List[Dict[str, Any]]] = {obj: [] for obj in objectives}
+        result_keys: Dict[str, str] = {}
+
+        needs_time = self._needs_time_series()
+
+        # Resolve the grouping config once for label-based exclusion.
+        _grouping_for_exclusion = None
+        if baseline_group_labels:
+            for plot in self.config.plots:
+                if plot.enable_grouping and plot.plot_grouping and getattr(plot.plot_grouping, 'is_configured', False):
+                    _grouping_for_exclusion = plot.plot_grouping
+                    break
+
+        batches = self.loader.iter_experiment_batches(batch_size)
+        first_batch = next(batches, [])
+        instance_mode = self._is_instance_mode(objectives, first_batch)
+
+        def process_batch(batch: List[Any]) -> None:
+            for exp in batch:
+                exp_name = self.parser.get_name(exp)
+                if exp_name in baseline_names:
+                    continue
+
+                meta = ExperimentMetadata.extract(exp)
+
+                # Secondary gate: exclude by group label so that baseline
+                # experiments whose .name is None/missing don't leak into
+                # the main pool and produce a ghost solid baseline line.
+                if baseline_group_labels and _grouping_for_exclusion is not None:
+                    from analyzer.util.grouping_utils import build_group_label as _bgl
+                    src = getattr(exp, '_source_filename', '')
+                    lbl = _bgl(meta, exp_name, src, _grouping_for_exclusion)
+                    if lbl in baseline_group_labels:
+                        continue
+                exp_objectives = self._objectives_for_experiment(meta, objectives, instance_mode)
+                if not exp_objectives:
+                    continue
+
+                display_name = self.parser.build_display_name(exp_name)
+                source_filename = getattr(exp, '_source_filename', '')
+                runtime = self.extractor.extract_runtime(exp)
+
+                for objective in exp_objectives:
+                    result_key = result_keys.get(objective)
+                    if result_key is None:
+                        result_key = self._resolve_result_key_for_stream(objective, exp)
+                        result_keys[objective] = result_key
+
+                    series = self.extractor.extract_objective_series(exp, result_key)
+                    if not series:
+                        continue
+
+                    row = self.table_gen.build_row(exp, objective, self.config.table_config)
+                    if row:
+                        tables_by_objective.setdefault(objective, []).append(row)
+
+                    time_series = self.extractor.extract_time_series(exp) if needs_time else []
+                    series_by_objective.setdefault(objective, []).append(ExperimentSeriesItem(
+                        name=exp_name,
+                        display_name=display_name,
+                        source_filename=source_filename,
+                        metadata=meta,
+                        series=series,
+                        time_series=time_series,
+                        runtime=runtime,
+                    ))
+
+        if first_batch:
+            process_batch(first_batch)
+        for batch in batches:
+            process_batch(batch)
+
+        series_by_objective = {k: v for k, v in series_by_objective.items() if v}
+        tables_by_objective = {k: v for k, v in tables_by_objective.items() if v}
+        return series_by_objective, tables_by_objective, result_keys
+
+    def _discover_objectives(self, batch_size: int) -> List[str]:
+        discovered: Set[str] = set()
+        for batch in self.loader.iter_experiment_batches(batch_size):
+            discovered.update(self.extractor.discover_objectives(batch))
+        result = sorted(discovered)
+        if result:
+            logger.info(f"Discovered result keys: {result}")
+        return result
 
     @staticmethod
-    def _exclude_baselines(experiments: List[Any], baselines: Dict[str, Any]) -> List[Any]:
-        """Return *experiments* with any baseline experiments removed.
-
-        Experiments selected as baselines live in the same results folder.
-        Without this filter they would appear both as regular experiments and
-        as baselines, leading to double-counting in plots and tables.
-        """
-        baseline_names = {
-            getattr(bl.raw_experiment, 'name', None) or getattr(bl.raw_experiment, 'ed_id', None)
-            for bl in baselines.values()
-            if getattr(bl, 'raw_experiment', None) is not None
+    def _is_instance_mode(objectives: List[str], experiments: List[Any]) -> bool:
+        if not objectives or not experiments:
+            return False
+        sample_instances = {
+            ExperimentMetadata.extract(exp).get("problem_instance", "")
+            for exp in experiments
         }
-        if not baseline_names:
-            return experiments
-        filtered = [e for e in experiments
-                    if (getattr(e, 'name', None) or getattr(e, 'ed_id', None)) not in baseline_names]
-        logger.info(f"Excluded {len(experiments) - len(filtered)} baseline experiment(s)")
-        return filtered
+        return any(obj in sample_instances for obj in objectives)
 
-    def _partition_by_objective(self, experiments: List[Any]) -> Dict[str, List[Any]]:
-        return self.partition_service.partition(self.config.objectives_to_measure, experiments)
+    @staticmethod
+    def _objectives_for_experiment(meta: Dict[str, Any], objectives: List[str], instance_mode: bool) -> List[str]:
+        if not objectives:
+            return []
+        if not instance_mode:
+            return objectives
+        instance = meta.get("problem_instance", "")
+        return [instance] if instance in objectives else []
 
-    def _generate_plots(self, objective_partitions: Dict[str, List[Any]],
-                        baselines: Dict[str, Any]) -> Dict[str, List[go.Figure]]:
-        """Return ``{objective: [figures]}`` — one entry per report tab."""
+    @staticmethod
+    def _resolve_result_key_for_stream(objective: str, exp: Any) -> str:
+        sample_configs = getattr(exp, 'measured_configurations', [])[:1]
+        if sample_configs:
+            keys = set(getattr(sample_configs[0], 'results', {}).keys())
+            if objective not in keys and 'objective' in keys:
+                return 'objective'
+        return objective
+
+    def _needs_time_series(self) -> bool:
+        if any(plot.uses_time_metric() for plot in self.config.plots):
+            return True
+        if self.config.comparative_analysis and self.config.comparative_analysis.regret_analysis:
+            return "time" in self.config.comparative_analysis.regret_analysis.regret_type
+        return False
+
+    @staticmethod
+    def _build_baseline_name_set(baselines: Dict[str, Any]) -> Set[str]:
+        baseline_names = set()
+        for bl in baselines.values():
+            raw_exp = getattr(bl, 'raw_experiment', None)
+            if raw_exp is not None:
+                baseline_names.add(getattr(raw_exp, 'name', None) or getattr(raw_exp, 'ed_id', None))
+            raw_group = getattr(bl, 'raw_experiments', None) or []
+            for exp in raw_group:
+                baseline_names.add(getattr(exp, 'name', None) or getattr(exp, 'ed_id', None))
+        return {name for name in baseline_names if name}
+
+    def _generate_plots_from_series(
+        self,
+        series_by_objective: Dict[str, List[ExperimentSeriesItem]],
+        baselines: Dict[str, Any],
+        result_keys: Dict[str, str],
+    ) -> Dict[str, List[go.Figure]]:
         objective_plots: Dict[str, List[go.Figure]] = {}
 
-        for objective, experiments in objective_partitions.items():
+        for objective, items in series_by_objective.items():
             obj_baselines = self._filter_baselines_for_objective(baselines, objective)
-            result_key = self._resolve_result_key(objective, experiments)
-            figures = self._make_figures(result_key, experiments, obj_baselines, objective)
+            result_key = result_keys.get(objective, objective)
+            figures = self._make_figures_from_series(result_key, items, obj_baselines, objective)
             if figures:
                 objective_plots[objective] = figures
 
         return objective_plots
 
-    def _resolve_result_key(self, objective: str, experiments: List[Any]) -> str:
-        return self.partition_service.resolve_result_key(objective, experiments)
-
-    def _make_figures(self, result_key: str, experiments: List[Any],
-                      baselines: Dict[str, Any], partition_key: str = "") -> List[go.Figure]:
-        """Produce one figure per configured Plot_N block"""
+    def _make_figures_from_series(
+        self,
+        result_key: str,
+        items: List[ExperimentSeriesItem],
+        baselines: Dict[str, Any],
+        partition_key: str = "",
+    ) -> List[go.Figure]:
         known_optimum = self.config.known_optima.get(partition_key) if partition_key else None
 
         figures = []
@@ -152,37 +282,131 @@ class BenchmarkAnalyzer:
             if not plot_config.should_plot_objective(result_key):
                 continue
 
-            plot_exps = ExperimentGrouper.filter(experiments, plot_config.filter_conditions)
-            grouping = plot_config.plot_grouping  # per-plot CustomGrouping (may be None)
+            conditions = plot_config.filter_conditions or []
+            plot_items = [
+                item for item in items
+                if matches_conditions(item.metadata, conditions)
+            ]
+            grouping = plot_config.plot_grouping
             title_suffix = self._build_plot_title_suffix(plot_config)
 
             if plot_config.enable_grouping:
-                groups = self._build_plot_groups(plot_exps, grouping)
-                logger.info(f"  [{partition_key or result_key}] plot '{title_suffix or 'default'}': "
-                            f"{len(plot_exps)} experiments -> {len(groups)} groups")
-                fig = self.plotter.create_grouped_plot(
-                    result_key, groups, plot_config, self.extractor, baselines,
-                    title_suffix=title_suffix, known_optimum=known_optimum,
+                groups = self._build_series_groups(plot_items, grouping)
+                logger.info(
+                    f"  [{partition_key or result_key}] plot '{title_suffix or 'default'}': "
+                    f"{len(plot_items)} experiments -> {len(groups)} groups"
+                )
+                fig = self.plotter.create_grouped_plot_from_series(
+                    result_key,
+                    groups,
+                    plot_config,
+                    self.extractor,
+                    baselines,
+                    title_suffix=title_suffix,
+                    known_optimum=known_optimum,
+                    objective_instance=partition_key or None,
                 )
             else:
-                fig = self._create_convergence_plot(
-                    plot_exps, result_key, plot_config, baselines,
-                    known_optimum=known_optimum, title_suffix=title_suffix,
+                fig = self._create_plot_from_series(
+                    plot_items,
+                    result_key,
+                    plot_config,
+                    baselines,
+                    known_optimum=known_optimum,
+                    title_suffix=title_suffix,
+                    objective_instance=partition_key or None,
                 )
             if fig:
                 figures.append(fig)
         return figures
 
-    def _build_plot_groups(self, experiments: List[Any], grouping) -> Dict[str, List[Any]]:
-        if grouping is not None and grouping.is_configured:
-            return ExperimentGrouper(grouping).group(experiments)
-        return self.loader.group_experiments(experiments)
+    def _build_series_groups(self, items: List[ExperimentSeriesItem], grouping) -> Dict[str, Dict[str, Any]]:
+        known = grouping.known_group_names if (grouping and getattr(grouping, 'is_configured', False)) else None
+        groups: Dict[str, Dict[str, Any]] = {}
+        for item in items:
+            label = build_group_label(item.metadata, item.name, item.source_filename, grouping)
+            if known is not None and label not in known:
+                continue
+            group = groups.setdefault(label, {'series_list': [], 'time_series_list': [], 'final_values': []})
+            group['series_list'].append(item.series)
+            if item.time_series:
+                group['time_series_list'].append(item.time_series)
+            if item.series:
+                final_val = item.series[-1]
+                if final_val is not None:
+                    try:
+                        if math.isfinite(final_val):
+                            group['final_values'].append(final_val)
+                    except Exception:
+                        group['final_values'].append(final_val)
+        if grouping and getattr(grouping, 'is_configured', False):
+            ordered = grouping.ordered_group_names
+            groups = {k: groups[k] for k in ordered if k in groups}
+        return groups
+
+    def _create_plot_from_series(
+        self,
+        items: List[ExperimentSeriesItem],
+        objective: str,
+        plot_config: Any,
+        baselines: Dict[str, Any] = None,
+        known_optimum: Optional[float] = None,
+        title_suffix: str = "",
+        objective_instance: Optional[str] = None,
+    ) -> Optional[go.Figure]:
+        names = [item.display_name for item in items]
+        data_series = [item.series for item in items]
+        time_series = [item.time_series for item in items] if plot_config.uses_time_metric() else []
+
+        if not data_series:
+            return None
+
+        normalized_baselines = baselines
+        if plot_config.normalize and baselines:
+            data_series, normalized_baselines = self._normalize_with_baselines(
+                data_series, baselines, objective, plot_config.normalization_strategy,
+                objective_instance=objective_instance
+            )
+        elif plot_config.normalize:
+            data_series = self.processor.normalize_series(data_series, plot_config.normalization_strategy)
+
+        if plot_config.plot_type == 'box_plot':
+            return self.plotter.create_box_plot(
+                objective,
+                names,
+                data_series,
+                plot_config,
+                normalized_baselines,
+                known_optimum=known_optimum,
+                objective_instance=objective_instance,
+            )
+        if plot_config.uses_time_metric():
+            return self.plotter.create_custom_plot(
+                objective,
+                names,
+                data_series,
+                time_series,
+                plot_config,
+                normalized_baselines,
+                known_optimum=known_optimum,
+                objective_instance=objective_instance,
+            )
+        return self.plotter.create_convergence_plot(
+            objective,
+            names,
+            data_series,
+            plot_config,
+            normalized_baselines,
+            known_optimum=known_optimum,
+            title_suffix=title_suffix,
+            objective_instance=objective_instance,
+        )
 
     @staticmethod
     def _build_plot_title_suffix(plot_config) -> str:
-        """Build a easy readable title suffix from the plot's title or filter conditions"""
+        """Build a suffix from filter conditions (used when no explicit title is set)."""
         if plot_config.title:
-            return f" – {plot_config.title}"
+            return ""
         if plot_config.filter_conditions:
             parts = [
                 f"{c.path.split('.')[-1]}={c.value}"
@@ -332,40 +556,13 @@ class BenchmarkAnalyzer:
             logger.error(f"Failed to generate global performance profile: {e}", exc_info=True)
             return None
 
-    def _create_convergence_plot(self, experiments: List[Any], objective: str, plot_config: Any,
-                                baselines: Dict[str, Any] = None,
-                                known_optimum: Optional[float] = None,
-                                title_suffix: str = "") -> Optional[go.Figure]:
-        names, data_series, time_series = self._extract_plot_data(experiments, objective, plot_config)
-
-        if not data_series:
-            return None
-
-        normalized_baselines = baselines
-        if plot_config.normalize and baselines:
-            data_series, normalized_baselines = self._normalize_with_baselines(
-                data_series, baselines, objective, plot_config.normalization_strategy
-            )
-        elif plot_config.normalize:
-            data_series = self.processor.normalize_series(data_series, plot_config.normalization_strategy)
-
-        if plot_config.plot_type == 'box_plot':
-            return self.plotter.create_box_plot(objective, names, data_series, plot_config,
-                                                normalized_baselines, known_optimum=known_optimum)
-        elif plot_config.uses_time_metric():
-            return self.plotter.create_custom_plot(objective, names, data_series, time_series, plot_config,
-                                                   normalized_baselines, known_optimum=known_optimum)
-        else:
-            return self.plotter.create_convergence_plot(objective, names, data_series, plot_config,
-                                                        normalized_baselines, known_optimum=known_optimum,
-                                                        title_suffix=title_suffix)
-
     def _normalize_with_baselines(
         self,
         data_series: List[List[float]],
         baselines: Dict[str, Any],
         objective: str,
-        normalization_strategy: str
+        normalization_strategy: str,
+        objective_instance: Optional[str] = None,
     ) -> Tuple[List[List[float]], Dict[str, Any]]:
         """
         Normalize experiments and baselines together using the same normalization factor.
@@ -378,14 +575,16 @@ class BenchmarkAnalyzer:
         if normalization_strategy == NormalizationType.NONE.value:
             return data_series, baselines
 
-        # Extract baseline trajectories using the shared static method
-        baseline_trajectories = [
-            t for bl in baselines.values()
-            for t in [ComparisonProcessor._extract_baseline_trajectory(bl, objective)]
+        cache_key = objective_instance or objective
+        # Extract each baseline trajectory once and cache by key to avoid double extraction
+        baseline_trajs = {
+            k: t
+            for k, bl in baselines.items()
+            for t in [ComparisonProcessor._extract_baseline_trajectory(bl, cache_key, minimize=True, result_key=objective)]
             if t
-        ]
+        }
 
-        all_series = data_series + baseline_trajectories
+        all_series = data_series + list(baseline_trajs.values())
 
         if normalization_strategy == NormalizationType.MIN_OVER_ALL.value:
             all_mins = [min((y for y in s if y is not None), default=None) for s in all_series]
@@ -398,7 +597,7 @@ class BenchmarkAnalyzer:
 
             normalized_baselines = {}
             for baseline_key, baseline_result in baselines.items():
-                traj = ComparisonProcessor._extract_baseline_trajectory(baseline_result, objective)
+                traj = baseline_trajs.get(baseline_key)
                 if traj:
                     normalized_traj = [(y / global_min) if y is not None else None for y in traj]
                     normalized_baselines[baseline_key] = BaselineResult(
@@ -424,7 +623,7 @@ class BenchmarkAnalyzer:
 
             normalized_baselines = {}
             for baseline_key, baseline_result in baselines.items():
-                traj = ComparisonProcessor._extract_baseline_trajectory(baseline_result, objective)
+                traj = baseline_trajs.get(baseline_key)
                 if traj:
                     normalized_traj = [(y / global_max) if y is not None else None for y in traj]
                     normalized_baselines[baseline_key] = BaselineResult(
@@ -441,36 +640,6 @@ class BenchmarkAnalyzer:
 
         return data_series, baselines
 
-
-    def _extract_plot_data(self, experiments: List[Any], objective: str, plot_config: Any) -> Tuple[
-        List[str], List[List[float]], List[List[Optional[float]]]]:
-        names, data_series, time_series = [], [], []
-
-        for exp in experiments:
-            obj_values = self.extractor.extract_objective_series(exp, objective)
-            if not obj_values:
-                continue
-
-            names.append(self.parser.build_display_name(self.parser.get_name(exp)))
-            data_series.append(obj_values)
-
-            if plot_config.uses_time_metric():
-                time_series.append(self.extractor.extract_time_series(exp))
-
-        return names, data_series, time_series
-
-    def _build_tables(self, objective_partitions: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
-        logger.info("Building summary tables...")
-        tables_by_objective = {}
-        for objective, experiments in objective_partitions.items():
-            result_key = self._resolve_result_key(objective, experiments)
-            rows = self.table_gen.create_table(experiments, result_key, self.config.table_config)
-            if rows:
-                if result_key != objective:
-                    for row in rows:
-                        row['Objective'] = objective
-                tables_by_objective[objective] = rows
-        return tables_by_objective
 
     def _build_comparative_tables(self, comparative_results: Dict[str, List[Any]]) -> Dict[str, List[Dict[str, Any]]]:
         table_config = self.config.comparative_analysis.comparative_table

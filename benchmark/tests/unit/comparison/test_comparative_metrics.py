@@ -20,9 +20,9 @@ def test_regret_curve_time_requires_same_lengths():
 def test_relative_improvement_handles_zero_denominator_edge_cases():
     calc = RelativeImprovementCalculator()
 
-    assert calc.calculate_relative_improvement(10.0, 10.0, 10.0, minimize=True) == 0.0
-    assert calc.calculate_relative_improvement(8.0, 10.0, 10.0, minimize=True) == 1.0
-    assert calc.calculate_relative_improvement(12.0, 10.0, 10.0, minimize=True) == -1.0
+    assert calc.calculate_relative_improvement(10.0, 10.0, minimize=True) == 1.0
+    assert calc.calculate_relative_improvement(8.0, 10.0, minimize=True) == 1.25
+    assert calc.calculate_relative_improvement(12.0, 10.0, minimize=True) == 10.0 / 12.0
 
 
 def test_time_and_iteration_relative_improvement_are_clipped_and_guarded():
@@ -52,4 +52,3 @@ def test_performance_profile_calculator_builds_monotonic_profiles():
     assert len(rho) == 5
     assert np.all(np.diff(rho) >= -1e-12)
     assert 0.0 <= rho[0] <= rho[-1] <= 1.0
-

@@ -63,7 +63,7 @@ def test_compute_comparative_metrics_uses_per_objective_optimum_precedence(monke
 
     captured_known_optima = []
 
-    def _fake_process(experiment_data, baseline, objective, known_optimum):
+    def _fake_process(experiment_data, baseline, objective, known_optimum, **kwargs):
         captured_known_optima.append(known_optimum)
         return type("DummyResult", (), {"experiment_trajectory": [1.0], "baseline_trajectory": [1.0]})()
 
@@ -73,4 +73,3 @@ def test_compute_comparative_metrics_uses_per_objective_optimum_precedence(monke
 
     assert "Y1" in results
     assert captured_known_optima == [1.0]
-

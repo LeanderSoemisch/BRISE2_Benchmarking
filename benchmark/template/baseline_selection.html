@@ -161,6 +161,26 @@
             line-height: 1.5;
         }
 
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .badge-group {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .badge-experiment {
+            background: #f3e8ff;
+            color: #6b21a8;
+        }
+
         .button-group {
             display: flex;
             gap: 16px;
@@ -259,7 +279,8 @@
             <div class="instructions">
                 <h2>Instructions</h2>
                 <p>
-                    Select one or more experiments to use as baselines for comparative analysis.
+                    Select one or more baseline groups or individual experiments. Grouped baselines use the
+                    configured CustomGrouping (e.g., MH and variant) and aggregate their trajectories.
                 </p>
             </div>
 
@@ -271,16 +292,28 @@
             </div>
 
             <div class="experiment-list">
-                {% for exp in experiments %}
+                {% for item in baseline_items %}
                 <div class="experiment-item" onclick="toggleCheckbox('exp_{{ loop.index }}')">
                     <input type="checkbox"
                            id="exp_{{ loop.index }}"
-                           value="{{ exp.name }}"
+                           value="{{ item.baseline_id }}"
                            class="experiment-checkbox"
                            onclick="event.stopPropagation()">
                     <label for="exp_{{ loop.index }}" class="experiment-details" onclick="event.stopPropagation(); toggleCheckbox('exp_{{ loop.index }}')">
-                        <div class="experiment-name">{{ exp.display_name }}</div>
-                        <div class="experiment-description">{{ exp.description }}</div>
+                        <div class="experiment-name">
+                            {{ item.display_name }}
+                            {% if item.kind == 'group' %}
+                                <span class="badge badge-group">Group</span>
+                            {% else %}
+                                <span class="badge badge-experiment">Experiment</span>
+                            {% endif %}
+                        </div>
+                        <div class="experiment-description">{{ item.description }}</div>
+                        {% if item.kind == 'group' and item.members %}
+                            <div class="experiment-description">
+                                Members: {{ item.members[:5] | join(', ') }}{% if item.members|length > 5 %}, ...{% endif %}
+                            </div>
+                        {% endif %}
                     </label>
                 </div>
                 {% endfor %}
@@ -411,4 +444,3 @@
     </script>
 </body>
 </html>
-

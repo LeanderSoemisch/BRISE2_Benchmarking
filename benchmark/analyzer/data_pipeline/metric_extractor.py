@@ -79,10 +79,16 @@ class MetricExtractor:
     @staticmethod
     def extract_grouped_data(experiments: List[Any], objective: str,
             metric_type: str = MetricType.ITERATION.value) -> Dict[str, Any]:
-        """Extract min/max/mean objective values across grouped test case repetitions
+        """Extract min/max/mean objective values across grouped test case repetitions.
+
+        Shorter repetitions are NOT forward-filled. At each iteration index we
+        aggregate only over the repetitions that still have real data there; the
+        returned ``sample_counts`` lets downstream code filter sparsely-sampled
+        indices.
 
         Returns:
-            Dict with min_values, max_values, mean_values, and metric_values
+            Dict with min_values, max_values, mean_values, std_values,
+            sample_counts and metric_values (all aligned by index).
         """
         if not experiments:
             return {}
@@ -98,51 +104,78 @@ class MetricExtractor:
             all_time_series = [MetricExtractor.extract_time_series(exp) for exp in experiments]
 
         max_length = max(len(s) for s in all_series)
-        padded_series = MetricExtractor._pad_series(all_series, max_length)
-
-        min_values, max_values, mean_values, std_values = MetricExtractor._compute_statistics(padded_series, max_length)
-
+        min_values, max_values, mean_values, std_values, sample_counts = (
+            MetricExtractor._compute_statistics(all_series, max_length)
+        )
         metric_values = MetricExtractor._generate_metric_values(metric_type, max_length, all_time_series)
 
         return {'min_values': min_values, 'max_values': max_values, 'mean_values': mean_values,
-                'std_values': std_values, 'metric_values': metric_values}
+                'std_values': std_values, 'sample_counts': sample_counts,
+                'metric_values': metric_values}
 
     @staticmethod
-    def _pad_series(series_list: List[List[float]], target_length: int) -> List[List[float]]:
-        """Pad series with last value to reach target length"""
-        padded = []
-        for series in series_list:
-            if len(series) < target_length:
-                last_val = series[-1] if series else None
-                padded.append(series + [last_val] * (target_length - len(series)))
-            else:
-                padded.append(series)
-        return padded
+    def extract_grouped_series_data(
+        series_list: List[List[float]],
+        metric_type: str = MetricType.ITERATION.value,
+        time_series_list: Optional[List[List[Optional[float]]]] = None,
+    ) -> Dict[str, Any]:
+        if not series_list:
+            return {}
+
+        all_series = [s for s in series_list if s]
+        if not all_series:
+            return {}
+
+        max_length = max(len(s) for s in all_series)
+        min_values, max_values, mean_values, std_values, sample_counts = (
+            MetricExtractor._compute_statistics(all_series, max_length)
+        )
+
+        time_series_list = time_series_list or []
+        metric_values = MetricExtractor._generate_metric_values(metric_type, max_length, time_series_list)
+
+        return {
+            'min_values': min_values,
+            'max_values': max_values,
+            'mean_values': mean_values,
+            'std_values': std_values,
+            'sample_counts': sample_counts,
+            'metric_values': metric_values,
+        }
 
     @staticmethod
     def _compute_statistics(series_list: List[List[float]], length: int) -> Tuple[
-        List[Optional[float]], List[Optional[float]], List[Optional[float]], List[Optional[float]]]:
-        """Compute min, max, mean and std-dev at each iteration index."""
-        import math as _math
-        min_vals, max_vals, mean_vals, std_vals = [], [], [], []
+        List[Optional[float]], List[Optional[float]], List[Optional[float]],
+        List[Optional[float]], List[int]]:
+        """Compute min, max, mean, std-dev and per-index sample count.
 
-        for i in range(length):
-            values_at_i = [s[i] for s in series_list if s[i] is not None]
-            if values_at_i:
-                n = len(values_at_i)
-                mean = sum(values_at_i) / n
-                variance = sum((v - mean) ** 2 for v in values_at_i) / n
-                min_vals.append(min(values_at_i))
-                max_vals.append(max(values_at_i))
-                mean_vals.append(mean)
-                std_vals.append(_math.sqrt(variance))
-            else:
-                min_vals.append(None)
-                max_vals.append(None)
-                mean_vals.append(None)
-                std_vals.append(None)
+        Reps shorter than ``length`` contribute NaN at indices past their end, so
+        nanmean/nanstd aggregate only over reps that actually reached that index.
+        """
+        import numpy as np
+        arr = np.full((len(series_list), length), np.nan, dtype=float)
+        for row, s in enumerate(series_list):
+            for col, v in enumerate(s):
+                if v is not None:
+                    arr[row, col] = float(v)
 
-        return min_vals, max_vals, mean_vals, std_vals
+        def _to_list(a: np.ndarray) -> List[Optional[float]]:
+            return [None if np.isnan(v) else float(v) for v in a]
+
+        sample_counts = (~np.isnan(arr)).sum(axis=0).astype(int).tolist()
+
+        # Suppress "Mean of empty slice" / "Degrees of freedom <= 0" warnings at
+        # indices with zero samples — those become NaN -> None in the output.
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            return (
+                _to_list(np.nanmin(arr, axis=0)),
+                _to_list(np.nanmax(arr, axis=0)),
+                _to_list(np.nanmean(arr, axis=0)),
+                _to_list(np.nanstd(arr, axis=0)),
+                sample_counts,
+            )
 
     @staticmethod
     def _generate_metric_values(metric_type: str, length: int, time_series_list: List[List[Optional[float]]]) -> List[

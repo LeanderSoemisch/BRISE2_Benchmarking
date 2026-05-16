@@ -234,7 +234,8 @@ See `configs/benchmark_templates/` for examples.
 
 #### Grouping and Known Optima
 - `enableGrouping`: Aggregate repetitions into mean plus/minus std bands
-- `CustomGrouping.autoGroupBy`: Build group labels from metadata paths (e.g. `mh_type`, `tuning_variant`)
+- `CustomGrouping.valueGroups`: Map metadata values to display labels using dot-paths
+- `CustomGrouping.autoGroupBy`: Optional fallback label builder from metadata paths
 - `KnownOptima`: Per-objective or per-instance optimum map used by regret and optimum reference lines
 
 ---
@@ -502,16 +503,25 @@ Recommended pattern:
 Grouping aggregates repeated runs into a mean line with a plus/minus std confidence band.
 
 - Enable with `enableGrouping: true` on a plot.
-- Optional `CustomGrouping.autoGroupBy` creates explicit legend groups from metadata paths.
-- Typical dimensions: `mh_type`, `tuning_variant`, `problem_instance` (used for recreating the analysis results from genericPC experiments).
+- `CustomGrouping.valueGroups` maps concrete metadata values to display labels.
+- `CustomGrouping.autoGroupBy` optionally builds labels from metadata paths when no explicit mapping matches.
+- Typical paths: `hhpc_variant`, `mh_type`, `tuning_variant`, `problem_instance`.
 
 Example:
 
 ```json
 "CustomGrouping": {
+  "valueGroups": [
+    {
+      "path": "ConfigurationSelection.Predictor.Model_0.Surrogate.Instance",
+      "groups": [
+        { "value": "3.4", "displayName": "BRR-H-TPE" },
+        { "value": "2.5", "displayName": "FRAMAB-H-BRR" }
+      ]
+    }
+  ],
   "autoGroupBy": [
-    { "path": "mh_type", "label": "MH" },
-    { "path": "tuning_variant", "label": "variant" }
+    { "path": "hhpc_variant", "useValueOnly": true }
   ]
 }
 ```
