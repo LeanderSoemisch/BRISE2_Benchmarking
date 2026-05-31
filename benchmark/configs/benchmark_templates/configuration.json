@@ -110,6 +110,134 @@
         }
       }
     },
+    "Plot_2": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: FRAMAB-H-TPE",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "FRAMAB-H-TPE" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "valueGroups": [{
+              "path": "low level heuristic",
+              "groups": [
+                { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+                { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+                { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+              ]
+            }]
+          },
+          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_3": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: FRAMAB-H-BRR",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "FRAMAB-H-BRR" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "valueGroups": [{
+              "path": "low level heuristic",
+              "groups": [
+                { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+                { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+                { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+              ]
+            }]
+          },
+          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_4": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: BRR-H-TPE",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "BRR-H-TPE" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "valueGroups": [{
+              "path": "low level heuristic",
+              "groups": [
+                { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+                { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+                { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+              ]
+            }]
+          },
+          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_5": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: BRR-H-BRR",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "BRR-H-BRR" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "valueGroups": [{
+              "path": "low level heuristic",
+              "groups": [
+                { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+                { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+                { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+              ]
+            }]
+          },
+          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear"
+          }
+        }
+      }
+    },
     "ComparativeAnalysis": {
       "ComparativeTable": {
         "experiment": true,

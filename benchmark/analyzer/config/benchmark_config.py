@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 class PlotType(Enum):
     CONVERGENCE = 'convergence_plot'
     CUSTOM = 'custom_plot'
+    SCATTER = 'scatter_plot'
 
 
 class MetricType(Enum):
@@ -65,6 +66,13 @@ class PlotConfig:
     # contribute at an iteration for it to be drawn. Handles groups of
     # different sizes without needing to hard-code an absolute count.
     min_reps_ratio: Optional[float] = None
+    # ScatterPlot only: 'metadata' (default, groups by experiment-level metadata)
+    # or 'hyperparameter' (groups by per-iteration hyperparameter value, e.g. LLH selection).
+    group_by: str = 'metadata'
+    # ScatterPlot only: when False, draw a pure scatter (one full-opacity marker
+    # trace per group, no aggregated mean line). True keeps the faint-dots +
+    # bold-mean-line style. Set False to reproduce the old single-rep figures.
+    scatter_show_mean_line: bool = True
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -300,6 +308,11 @@ class BenchmarkConfig:
             except (TypeError, ValueError):
                 pass
 
+        raw_group_by = plot_data.get("groupBy", "metadata")
+        group_by = raw_group_by if raw_group_by in ("metadata", "hyperparameter") else "metadata"
+
+        scatter_show_mean_line = bool(plot_data.get("showMeanLine", True))
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -317,6 +330,8 @@ class BenchmarkConfig:
             plot_grouping=plot_grouping,
             min_reps=min_reps,
             min_reps_ratio=min_reps_ratio,
+            group_by=group_by,
+            scatter_show_mean_line=scatter_show_mean_line,
         )
 
     @staticmethod
@@ -356,6 +371,8 @@ class BenchmarkConfig:
                 plots.append(BenchmarkConfig._create_plot_config(PlotType.CUSTOM.value, plot_type_data["CustomPlot"]))
             elif "BoxPlot" in plot_type_data:
                 plots.append(BenchmarkConfig._create_plot_config("box_plot", plot_type_data["BoxPlot"]))
+            elif "ScatterPlot" in plot_type_data:
+                plots.append(BenchmarkConfig._create_plot_config(PlotType.SCATTER.value, plot_type_data["ScatterPlot"]))
 
         # Parse KnownOptima once; forward to RegretAnalysis.optimum_per_objective
         known_optima: Dict[str, float] = {}
