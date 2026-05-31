@@ -322,6 +322,180 @@ class PlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
+    def create_scatter_plot_from_series(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+        show_mean_line: bool = True,
+    ) -> Optional[go.Figure]:
+        """Scatter plot: individual repetition dots + bold mean line per group. No baselines.
+
+        Handles sparse series where ``None`` indicates the LLH was not selected at
+        that iteration — only non-None values are plotted as dots, and the mean
+        line is computed ignoring None entries.
+
+        When ``show_mean_line`` is False a *pure* scatter is drawn instead: one
+        full-opacity ``+`` (cross) marker trace per group covering every point of
+        every repetition, and no aggregated mean line. This reproduces the old
+        ``sns.relplot(marker="+", hue="Used LLH")`` figures.
+        """
+        if not show_mean_line:
+            return self._create_pure_scatter(
+                objective, grouped_series, plot_config,
+                title_suffix=title_suffix, known_optimum=known_optimum,
+            )
+
+        traces = []
+        all_values = []
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+            series_list = group_data.get('series_list', [])
+            if not series_list:
+                continue
+
+            max_len = max((len(s) for s in series_list if s), default=0)
+            if max_len == 0:
+                continue
+
+            # Individual repetition traces — faint scatter dots (skip None entries)
+            for rep_series in series_list:
+                if not rep_series:
+                    continue
+                x_rep = [i for i, v in enumerate(rep_series) if v is not None and np.isfinite(v)]
+                y_rep = [v for v in rep_series if v is not None and np.isfinite(v)]
+                if not y_rep:
+                    continue
+                all_values.extend(y_rep)
+                traces.append(go.Scatter(
+                    x=x_rep, y=y_rep,
+                    mode='markers',
+                    marker=dict(size=3, color=color, opacity=0.25),
+                    showlegend=False,
+                    legendgroup=group_name,
+                    hoverinfo='skip',
+                ))
+
+            # Mean line — nanmean across repetitions, ignoring None
+            arr = np.full((len(series_list), max_len), np.nan)
+            for i, s in enumerate(series_list):
+                for j, v in enumerate(s):
+                    if v is not None and np.isfinite(v):
+                        arr[i, j] = float(v)
+            import warnings as _w
+            with _w.catch_warnings():
+                _w.simplefilter("ignore")
+                raw_mean = np.nanmean(arr, axis=0)
+
+            x_mean = [i for i, v in enumerate(raw_mean) if not np.isnan(v)]
+            y_mean = [float(v) for v in raw_mean if not np.isnan(v)]
+            if not y_mean:
+                continue
+            all_values.extend(y_mean)
+            traces.append(go.Scatter(
+                x=x_mean, y=y_mean,
+                mode='lines+markers',
+                name=group_name,
+                legendgroup=group_name,
+                line=dict(color=color, width=2),
+                marker=dict(size=4, color=color),
+                hovertemplate='iter %{x}, %{y:.2f}<extra></extra>',
+            ))
+
+        if not traces:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "create_scatter_plot_from_series: no traces produced for objective=%r "
+                "(groups=%s). All series may be empty or all-None. "
+                "Check extract_llh_series warnings above.",
+                objective, list(grouped_series.keys()),
+            )
+            return None
+
+        layout = dict(
+            title=self._build_plot_title(objective, plot_config, title_suffix),
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
+        )
+        self._apply_axis_config(layout, plot_config)
+        y_range = self._compute_robust_y_range(all_values)
+        if y_range:
+            layout['yaxis']['range'] = y_range
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        return go.Figure(data=traces, layout=layout)
+
+    def _create_pure_scatter(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+    ) -> Optional[go.Figure]:
+        """One full-opacity ``+`` marker trace per group, no mean line.
+
+        Each group's points are pooled across every repetition in
+        ``series_list``; ``None`` entries (LLH not selected at that iteration) are
+        skipped. The x value is the iteration index within the repetition, the y
+        value the raw objective — mirroring the old per-iteration LLH scatter.
+        """
+        traces = []
+        all_values = []
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+            series_list = group_data.get('series_list', [])
+            x_all, y_all = [], []
+            for rep_series in series_list:
+                if not rep_series:
+                    continue
+                for i, v in enumerate(rep_series):
+                    if v is not None and np.isfinite(v):
+                        x_all.append(i)
+                        y_all.append(v)
+            if not y_all:
+                continue
+            all_values.extend(y_all)
+            traces.append(go.Scatter(
+                x=x_all, y=y_all,
+                mode='markers',
+                name=group_name,
+                legendgroup=group_name,
+                marker=dict(size=7, color=color, symbol='cross', opacity=0.8),
+                hovertemplate='iter %{x}, %{y:.2f}<extra></extra>',
+            ))
+
+        if not traces:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "_create_pure_scatter: no traces produced for objective=%r (groups=%s).",
+                objective, list(grouped_series.keys()),
+            )
+            return None
+
+        layout = dict(
+            title=self._build_plot_title(objective, plot_config, title_suffix),
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
+        )
+        self._apply_axis_config(layout, plot_config)
+        y_range = self._compute_robust_y_range(all_values)
+        if y_range:
+            layout['yaxis']['range'] = y_range
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        return go.Figure(data=traces, layout=layout)
+
     def create_grouped_box_plot_from_series(
         self,
         objective: str,

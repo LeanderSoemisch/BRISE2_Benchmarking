@@ -7,7 +7,7 @@ from typing import List, Any, Dict, Optional, Tuple, Set
 import pandas as pd
 import plotly.graph_objs as go
 
-from analyzer.config import BenchmarkConfig, NormalizationType
+from analyzer.config import BenchmarkConfig, NormalizationType, PlotType
 from analyzer.data_pipeline import ExperimentLoader, ExperimentParser, MetricExtractor, DataProcessor
 from analyzer.data_pipeline.experiment_metadata import ExperimentMetadata
 from analyzer.visualization import (PlotGenerator, TableGenerator, ReportGenerator)
@@ -32,6 +32,8 @@ class ExperimentSeriesItem:
     series: List[float]
     time_series: List[Optional[float]]
     runtime: Optional[float]
+    raw_series: Optional[List[float]] = None
+    llh_series: Optional[Dict[str, List[Optional[float]]]] = None
 
 
 class BenchmarkAnalyzer:
@@ -123,6 +125,9 @@ class BenchmarkAnalyzer:
         result_keys: Dict[str, str] = {}
 
         needs_time = self._needs_time_series()
+        needs_raw = self._needs_raw_series()
+        needs_llh = self._needs_llh_series()
+        llh_extraction_configs = self._get_llh_extraction_configs() if needs_llh else []
 
         # Resolve the grouping config once for label-based exclusion.
         _grouping_for_exclusion = None
@@ -176,6 +181,14 @@ class BenchmarkAnalyzer:
                         tables_by_objective.setdefault(objective, []).append(row)
 
                     time_series = self.extractor.extract_time_series(exp) if needs_time else []
+                    raw_series = self.extractor.extract_raw_objective_series(exp, result_key) if needs_raw else None
+                    llh_series = None
+                    if llh_extraction_configs:
+                        llh_series = {}
+                        for llh_path, name_mapping in llh_extraction_configs:
+                            llh_series.update(
+                                self.extractor.extract_llh_series(exp, result_key, llh_path, name_mapping)
+                            )
                     series_by_objective.setdefault(objective, []).append(ExperimentSeriesItem(
                         name=exp_name,
                         display_name=display_name,
@@ -184,6 +197,8 @@ class BenchmarkAnalyzer:
                         series=series,
                         time_series=time_series,
                         runtime=runtime,
+                        raw_series=raw_series,
+                        llh_series=llh_series,
                     ))
 
         if first_batch:
@@ -239,6 +254,37 @@ class BenchmarkAnalyzer:
             return "time" in self.config.comparative_analysis.regret_analysis.regret_type
         return False
 
+    def _needs_raw_series(self) -> bool:
+        return any(
+            plot.plot_type == PlotType.SCATTER.value and plot.group_by == 'metadata'
+            for plot in self.config.plots
+        )
+
+    def _needs_llh_series(self) -> bool:
+        return any(
+            plot.plot_type == PlotType.SCATTER.value and plot.group_by == 'hyperparameter'
+            for plot in self.config.plots
+        )
+
+    def _get_llh_extraction_configs(self) -> List[Tuple[str, Dict[str, str]]]:
+        """Return [(llh_path, name_mapping), ...] for all hyperparameter-grouped scatter plots."""
+        seen: set = set()
+        results: List[Tuple[str, Dict[str, str]]] = []
+        for plot in self.config.plots:
+            if plot.plot_type != PlotType.SCATTER.value or plot.group_by != 'hyperparameter':
+                continue
+            grouping = plot.plot_grouping
+            if not (grouping and getattr(grouping, 'is_configured', False)):
+                continue
+            for spec in grouping.value_groups:
+                key = spec.path
+                if key in seen:
+                    continue
+                seen.add(key)
+                name_mapping = {entry.value: entry.display_name for entry in spec.groups}
+                results.append((key, name_mapping))
+        return results
+
     @staticmethod
     def _build_baseline_name_set(baselines: Dict[str, Any]) -> Set[str]:
         baseline_names = set()
@@ -291,21 +337,35 @@ class BenchmarkAnalyzer:
             title_suffix = self._build_plot_title_suffix(plot_config)
 
             if plot_config.enable_grouping:
-                groups = self._build_series_groups(plot_items, grouping)
+                is_scatter = plot_config.plot_type == PlotType.SCATTER.value
+                if is_scatter and plot_config.group_by == 'hyperparameter':
+                    groups = self._build_llh_groups(plot_items, grouping)
+                else:
+                    groups = self._build_series_groups(plot_items, grouping, use_raw=is_scatter)
                 logger.info(
                     f"  [{partition_key or result_key}] plot '{title_suffix or 'default'}': "
                     f"{len(plot_items)} experiments -> {len(groups)} groups"
                 )
-                fig = self.plotter.create_grouped_plot_from_series(
-                    result_key,
-                    groups,
-                    plot_config,
-                    self.extractor,
-                    baselines,
-                    title_suffix=title_suffix,
-                    known_optimum=known_optimum,
-                    objective_instance=partition_key or None,
-                )
+                if is_scatter:
+                    fig = self.plotter.create_scatter_plot_from_series(
+                        result_key,
+                        groups,
+                        plot_config,
+                        title_suffix=title_suffix,
+                        known_optimum=known_optimum,
+                        show_mean_line=plot_config.scatter_show_mean_line,
+                    )
+                else:
+                    fig = self.plotter.create_grouped_plot_from_series(
+                        result_key,
+                        groups,
+                        plot_config,
+                        self.extractor,
+                        baselines,
+                        title_suffix=title_suffix,
+                        known_optimum=known_optimum,
+                        objective_instance=partition_key or None,
+                    )
             else:
                 fig = self._create_plot_from_series(
                     plot_items,
@@ -320,7 +380,7 @@ class BenchmarkAnalyzer:
                 figures.append(fig)
         return figures
 
-    def _build_series_groups(self, items: List[ExperimentSeriesItem], grouping) -> Dict[str, Dict[str, Any]]:
+    def _build_series_groups(self, items: List[ExperimentSeriesItem], grouping, use_raw: bool = False) -> Dict[str, Dict[str, Any]]:
         known = grouping.known_group_names if (grouping and getattr(grouping, 'is_configured', False)) else None
         groups: Dict[str, Dict[str, Any]] = {}
         for item in items:
@@ -328,7 +388,8 @@ class BenchmarkAnalyzer:
             if known is not None and label not in known:
                 continue
             group = groups.setdefault(label, {'series_list': [], 'time_series_list': [], 'final_values': []})
-            group['series_list'].append(item.series)
+            series_to_use = (item.raw_series if (use_raw and item.raw_series) else item.series)
+            group['series_list'].append(series_to_use)
             if item.time_series:
                 group['time_series_list'].append(item.time_series)
             if item.series:
@@ -342,6 +403,32 @@ class BenchmarkAnalyzer:
         if grouping and getattr(grouping, 'is_configured', False):
             ordered = grouping.ordered_group_names
             groups = {k: groups[k] for k in ordered if k in groups}
+        return groups
+
+    def _build_llh_groups(
+        self,
+        items: List[ExperimentSeriesItem],
+        grouping,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build series groups keyed by per-iteration LLH selection.
+
+        Each item's ``llh_series`` dict maps display names to a sparse series
+        (None where that LLH was not selected). Groups aggregate those sparse
+        series across all repetitions (items).
+        """
+        ordered_names = grouping.ordered_group_names if (grouping and getattr(grouping, 'is_configured', False)) else []
+        groups: Dict[str, Dict[str, Any]] = {name: {'series_list': [], 'time_series_list': [], 'final_values': []} for name in ordered_names}
+
+        for item in items:
+            if not item.llh_series:
+                continue
+            for llh_name, sparse_series in item.llh_series.items():
+                if llh_name not in groups:
+                    continue
+                groups[llh_name]['series_list'].append(sparse_series)
+
+        # Drop groups with no data
+        groups = {k: v for k, v in groups.items() if v['series_list']}
         return groups
 
     def _create_plot_from_series(

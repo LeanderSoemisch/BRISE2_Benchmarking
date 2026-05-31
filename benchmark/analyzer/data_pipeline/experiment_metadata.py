@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -44,11 +45,13 @@ class ExperimentMetadata:
 
     @staticmethod
     def extract(exp: Any) -> Dict[str, Any]:
+        source_filename = getattr(exp, "_source_filename", "") or ""
         meta: Dict[str, Any] = {
-            "filename": getattr(exp, "_source_filename", "") or "",
+            "filename": source_filename,
             "exp_name": getattr(exp, "name", "") or "",
             "exp_id": getattr(exp, "id", "") or "",
             "num_measured": len(getattr(exp, "measured_configurations", [])),
+            "repetition": ExperimentMetadata._parse_repetition(source_filename),
         }
 
         desc = getattr(exp, "description", None)
@@ -118,6 +121,27 @@ class ExperimentMetadata:
 
         # --- Computed group variant ---
         meta["hhpc_variant"] = ExperimentMetadata._compute_hhpc_variant(meta)
+
+    @staticmethod
+    def _parse_repetition(filename: str) -> int:
+        """Parse the repetition index of a run from its serialized filename.
+
+        BRISE avoids filename collisions when the same experiment is re-run by
+        appending ``(0)``, ``(0)(1)``, … to the dump name. These suffixes are
+        *not* cumulative — each file is an independent repetition. The base file
+        (no suffix) is repetition 0; ``...(N)`` is repetition ``N + 1``.
+
+        Also handles the new-style trailing ``_N`` convention. Returns 0 when no
+        repetition marker is present.
+        """
+        name = filename[:-4] if filename.endswith(".pkl") else filename
+        legacy = re.findall(r"\((\d+)\)", name)
+        if legacy:
+            return int(legacy[-1]) + 1
+        new_style = re.search(r"_(\d+)$", name)
+        if new_style:
+            return int(new_style.group(1))
+        return 0
 
     @staticmethod
     def _parse_mh_type(datafile: str) -> str:
