@@ -132,12 +132,27 @@
               ]
             }]
           },
-          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
           "ObjectiveAxis": {
             "objectivesToPlot": ["objective"],
             "normalize": false,
             "label": "Objective (tour length)",
-            "scale": "linear"
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
           }
         }
       }
@@ -164,12 +179,27 @@
               ]
             }]
           },
-          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
           "ObjectiveAxis": {
             "objectivesToPlot": ["objective"],
             "normalize": false,
             "label": "Objective (tour length)",
-            "scale": "linear"
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
           }
         }
       }
@@ -196,12 +226,27 @@
               ]
             }]
           },
-          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
           "ObjectiveAxis": {
             "objectivesToPlot": ["objective"],
             "normalize": false,
             "label": "Objective (tour length)",
-            "scale": "linear"
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
           }
         }
       }
@@ -228,12 +273,27 @@
               ]
             }]
           },
-          "MetricAxis": { "label": "Iteration", "scale": "linear" },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
           "ObjectiveAxis": {
             "objectivesToPlot": ["objective"],
             "normalize": false,
             "label": "Objective (tour length)",
-            "scale": "linear"
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
           }
         }
       }

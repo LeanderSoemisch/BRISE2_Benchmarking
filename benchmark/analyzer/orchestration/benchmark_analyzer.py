@@ -347,6 +347,7 @@ class BenchmarkAnalyzer:
                     f"{len(plot_items)} experiments -> {len(groups)} groups"
                 )
                 if is_scatter:
+                    axis_bounds = plot_config.known_axis_bounds.get(partition_key) if partition_key else None
                     fig = self.plotter.create_scatter_plot_from_series(
                         result_key,
                         groups,
@@ -354,6 +355,7 @@ class BenchmarkAnalyzer:
                         title_suffix=title_suffix,
                         known_optimum=known_optimum,
                         show_mean_line=plot_config.scatter_show_mean_line,
+                        axis_bounds=axis_bounds,
                     )
                 else:
                     fig = self.plotter.create_grouped_plot_from_series(
