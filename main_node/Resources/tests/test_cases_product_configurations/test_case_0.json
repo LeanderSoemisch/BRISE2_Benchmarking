@@ -123,17 +123,16 @@
     },
     "StopCondition": {
         "Instance": {
-            "TimeBasedSC": {
+            "BadConfigurationBasedSC": {
                 "Parameters": {
-                    "MaxRunTime": 60,
-                    "TimeUnit": "seconds"
+                    "MaxBadConfigurations": 5
                 },
-                "Type": "time_based",
-                "Name": "t"
+                "Type": "bad_configuration_based",
+                "Name": "b"
             }
         },
         "StopConditionTriggerLogic": {
-            "Expression": "t",
+            "Expression": "b",
             "InspectionParameters": {
                 "RepetitionPeriod": 1,
                 "TimeUnit": "seconds"
