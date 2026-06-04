@@ -431,10 +431,18 @@ class BenchmarkConfig:
         # Parse KnownOptima once; forward to RegretAnalysis.optimum_per_objective
         known_optima: Dict[str, float] = {}
         for key, val in benchmark.get("KnownOptima", {}).items():
-            try:
-                known_optima[key] = float(val)
-            except (TypeError, ValueError):
-                pass
+            if isinstance(val, dict):
+                # Waffle format: {"ObjectiveOptimum_N": {"objective": "kroA100.tsp", "optimum": 21282.0}}
+                try:
+                    known_optima[str(val["objective"])] = float(val["optimum"])
+                except (KeyError, TypeError, ValueError):
+                    pass
+            else:
+                # Manual format: {"kroA100.tsp": 21282}
+                try:
+                    known_optima[key] = float(val)
+                except (TypeError, ValueError):
+                    pass
 
         comparative_analysis = BenchmarkConfig._parse_comparative_analysis(
             benchmark.get("ComparativeAnalysis", {}),
@@ -460,23 +468,46 @@ class BenchmarkConfig:
             return None
 
         value_groups: List[ValueGroupSpec] = []
-        for spec in grouping_data.get("valueGroups", []) or []:
-            if not isinstance(spec, dict):
-                continue
-            path = spec.get("path", "")
-            if not path:
-                continue
-            entries: List[ValueGroupEntry] = []
-            for entry in spec.get("groups", []) or []:
-                if not isinstance(entry, dict):
+
+        if "valueGroups" in grouping_data:
+            # Manual array format (hand-written configs):
+            # {"valueGroups": [{"path": "...", "groups": [{"value": "...", "displayName": "..."}]}]}
+            for spec in grouping_data.get("valueGroups", []) or []:
+                if not isinstance(spec, dict):
                     continue
-                value = entry.get("value")
-                display = entry.get("displayName") or entry.get("label")
-                if value is None or not display:
+                path = spec.get("path", "")
+                if not path:
                     continue
-                entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
-            if entries:
-                value_groups.append(ValueGroupSpec(path=path, groups=entries))
+                entries: List[ValueGroupEntry] = []
+                for entry in spec.get("groups", []) or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    value = entry.get("value")
+                    display = entry.get("displayName") or entry.get("label")
+                    if value is None or not display:
+                        continue
+                    entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
+                if entries:
+                    value_groups.append(ValueGroupSpec(path=path, groups=entries))
+        else:
+            # Waffle-generated structured format:
+            # {"ValueGroupSpec_0": {"path": "...", "ValueGroupEntry_0": {"value": "...", "displayName": "..."}}}
+            # Keys are sorted so that the configured display order is preserved.
+            for spec_key in sorted(k for k in grouping_data if isinstance(grouping_data[k], dict) and "path" in grouping_data[k]):
+                spec_val = grouping_data[spec_key]
+                path = spec_val.get("path", "")
+                if not path:
+                    continue
+                entries: List[ValueGroupEntry] = []
+                for entry_key in sorted(k for k in spec_val if k != "path" and isinstance(spec_val[k], dict)):
+                    entry_val = spec_val[entry_key]
+                    value = entry_val.get("value")
+                    display = entry_val.get("displayName") or entry_val.get("label")
+                    if value is None or not display:
+                        continue
+                    entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
+                if entries:
+                    value_groups.append(ValueGroupSpec(path=path, groups=entries))
 
         if not value_groups:
             return None
@@ -484,9 +515,23 @@ class BenchmarkConfig:
         return CustomGroupingConfig(value_groups=value_groups)
 
     @staticmethod
-    def _parse_match_conditions(conditions: List[Dict[str, Any]]) -> List[MatchCondition]:
+    def _parse_match_conditions(conditions: Any) -> List[MatchCondition]:
+        # Normalise to a flat list regardless of whether the source is the manual
+        # array format or the Waffle-generated dict format.
+        if isinstance(conditions, list):
+            cond_list = conditions
+        elif isinstance(conditions, dict):
+            if "path" in conditions:
+                # Waffle single-instance: the dict IS the one condition
+                cond_list = [conditions]
+            else:
+                # Waffle multi-instance: {"filterConditions_0": {...}, ...}
+                cond_list = [v for _, v in sorted(conditions.items()) if isinstance(v, dict)]
+        else:
+            return []
+
         parsed_conditions: List[MatchCondition] = []
-        for cond in conditions:
+        for cond in cond_list:
             if not isinstance(cond, dict):
                 continue
             parsed_conditions.append(MatchCondition(

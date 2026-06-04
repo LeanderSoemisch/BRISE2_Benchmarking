@@ -1,5 +1,8 @@
 {
     "Benchmark": {
+        "Resources": {
+            "Folder": "./results/results_generic_pc/serialized/full_benchmark_adapted/"
+        },
         "Report": {
             "outputDirectory": "./results/reports/"
         },
@@ -85,30 +88,42 @@
                     "title": "Tour Length Convergence by HH-PC Variant",
                     "filterConditions": {
                         "path": "hhpc_variant",
-                        "value": "\"\"",
+                        "value": "",
                         "contains": true,
                         "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR"
                     },
                     "CustomGrouping": {
-                        "valueGroups": [
-                            "[{\"path\":\"hhpc_variant\"",
-                            "\"groups\":[{\"value\":\"S-TPE\"",
-                            "\"displayName\":\"S-TPE\"}",
-                            "{\"value\":\"S-BRR\"",
-                            "\"displayName\":\"S-BRR\"}",
-                            "{\"value\":\"FRAMAB-H-TPE\"",
-                            "\"displayName\":\"FRAMAB-H-TPE\"}",
-                            "{\"value\":\"FRAMAB-H-BRR\"",
-                            "\"displayName\":\"FRAMAB-H-BRR\"}",
-                            "{\"value\":\"BRR-H-TPE\"",
-                            "\"displayName\":\"BRR-H-TPE\"}",
-                            "{\"value\":\"BRR-H-BRR\"",
-                            "\"displayName\":\"BRR-H-BRR\"}]}]"
-                        ]
+                        "ValueGroupSpec": {
+                            "path": "hhpc_variant",
+                            "ValueGroupEntry_0": {
+                                "value": "S-TPE",
+                                "displayName": "S-TPE"
+                            },
+                            "ValueGroupEntry_1": {
+                                "value": "S-BRR",
+                                "displayName": "S-BRR"
+                            },
+                            "ValueGroupEntry_2": {
+                                "value": "FRAMAB-H-TPE",
+                                "displayName": "FRAMAB-H-TPE"
+                            },
+                            "ValueGroupEntry_3": {
+                                "value": "FRAMAB-H-BRR",
+                                "displayName": "FRAMAB-H-BRR"
+                            },
+                            "ValueGroupEntry_4": {
+                                "value": "BRR-H-TPE",
+                                "displayName": "BRR-H-TPE"
+                            },
+                            "ValueGroupEntry_5": {
+                                "value": "BRR-H-BRR",
+                                "displayName": "BRR-H-BRR"
+                            }
+                        }
                     },
                     "MetricAxis": {
                         "metricDescription": "iterations completed",
-                        "label": "Group",
+                        "label": "Iteration",
                         "scale": "linear"
                     },
                     "ObjectiveAxis": {
@@ -140,21 +155,33 @@
                         "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR"
                     },
                     "CustomGrouping": {
-                        "valueGroups": [
-                            "[{\"path\":\"hhpc_variant\"",
-                            "\"groups\":[{\"value\":\"S-TPE\"",
-                            "\"displayName\":\"S-TPE\"}",
-                            "{\"value\":\"S-BRR\"",
-                            "\"displayName\":\"S-BRR\"}",
-                            "{\"value\":\"FRAMAB-H-TPE\"",
-                            "\"displayName\":\"FRAMAB-H-TPE\"}",
-                            "{\"value\":\"FRAMAB-H-BRR\"",
-                            "\"displayName\":\"FRAMAB-H-BRR\"}",
-                            "{\"value\":\"BRR-H-TPE\"",
-                            "\"displayName\":\"BRR-H-TPE\"}",
-                            "{\"value\":\"BRR-H-BRR\"",
-                            "\"displayName\":\"BRR-H-BRR\"}]}]"
-                        ]
+                        "ValueGroupSpec": {
+                            "path": "hhpc_variant",
+                            "ValueGroupEntry_0": {
+                                "value": "S-TPE",
+                                "displayName": "S-TPE"
+                            },
+                            "ValueGroupEntry_1": {
+                                "value": "S-BRR",
+                                "displayName": "S-BRR"
+                            },
+                            "ValueGroupEntry_2": {
+                                "value": "FRAMAB-H-TPE",
+                                "displayName": "FRAMAB-H-TPE"
+                            },
+                            "ValueGroupEntry_3": {
+                                "value": "FRAMAB-H-BRR",
+                                "displayName": "FRAMAB-H-BRR"
+                            },
+                            "ValueGroupEntry_4": {
+                                "value": "BRR-H-TPE",
+                                "displayName": "BRR-H-TPE"
+                            },
+                            "ValueGroupEntry_5": {
+                                "value": "BRR-H-BRR",
+                                "displayName": "BRR-H-BRR"
+                            }
+                        }
                     },
                     "MetricAxis": {
                         "metricDescription": "iterations completed",
