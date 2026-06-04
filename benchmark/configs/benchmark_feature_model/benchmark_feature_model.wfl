@@ -218,6 +218,16 @@ Benchmark {
           label -> string
           scale -> string
           [scale in {"linear", "log10"}]
+          // Per-instance fixed x-axis limits; only present values override auto-range.
+          // Keyed by the same instance names as Benchmark.Experiment.objectivesToMeasure.
+          KnownAxisBounds ? {
+            InstanceBounds * {
+              instance -> string
+              [instance in Benchmark.Experiment.objectivesToMeasure]
+              xMin -> float
+              xMax -> float
+            }
+          }
         }
         ObjectiveAxis {
           objectivesToPlot -> array
@@ -235,6 +245,16 @@ Benchmark {
           label -> string
           scale -> string
           [scale in {"linear", "log10"}]
+          // Per-instance fixed y-axis limits; only present values override auto-range.
+          // Keyed by the same instance names as Benchmark.Experiment.objectivesToMeasure.
+          KnownAxisBounds ? {
+            InstanceBounds * {
+              instance -> string
+              [instance in Benchmark.Experiment.objectivesToMeasure]
+              yMin -> float
+              yMax -> float
+            }
+          }
         }
       }
     }

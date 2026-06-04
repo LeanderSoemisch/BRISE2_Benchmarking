@@ -64,6 +64,37 @@ class PlotGenerator:
             layout['yaxis']['type'] = 'log'
 
     @staticmethod
+    def _apply_axis_bounds(layout: Dict[str, Any], axis_bounds: Optional[Any], fallback_values: List[float]) -> None:
+        """Apply axis ranges from ``axis_bounds`` (an ``AxisBounds`` instance).
+
+        For each axis, if an explicit bound is present it takes precedence over the
+        auto-computed range; otherwise the fallback auto-range is used.  Mixing is
+        supported: e.g. ``x_max`` fixed, ``y_min``/``y_max`` auto.
+        """
+        # --- x axis ---
+        x_min_explicit = getattr(axis_bounds, 'x_min', None) if axis_bounds else None
+        x_max_explicit = getattr(axis_bounds, 'x_max', None) if axis_bounds else None
+        if x_min_explicit is not None or x_max_explicit is not None:
+            x_min = x_min_explicit if x_min_explicit is not None else 0
+            x_max = x_max_explicit  # None means Plotly auto-range on the upper side (rare)
+            layout['xaxis']['range'] = [x_min, x_max]
+
+        # --- y axis ---
+        y_min_explicit = getattr(axis_bounds, 'y_min', None) if axis_bounds else None
+        y_max_explicit = getattr(axis_bounds, 'y_max', None) if axis_bounds else None
+        if y_min_explicit is not None or y_max_explicit is not None:
+            y_min = y_min_explicit if y_min_explicit is not None else 0
+            y_max = y_max_explicit if y_max_explicit is not None else (
+                max(fallback_values) * 1.05 if fallback_values else None
+            )
+            layout['yaxis']['range'] = [y_min, y_max]
+        else:
+            # Fall back to auto-range from data
+            y_range = PlotGenerator._compute_robust_y_range(fallback_values)
+            if y_range:
+                layout['yaxis']['range'] = y_range
+
+    @staticmethod
     def _optimum_trace(known_optimum: float) -> go.Scatter:
         """Invisible scatter used to add a green dashed optimum line to the legend."""
         return go.Scatter(
@@ -330,6 +361,7 @@ class PlotGenerator:
         title_suffix: str = "",
         known_optimum: Optional[float] = None,
         show_mean_line: bool = True,
+        axis_bounds: Optional[Any] = None,
     ) -> Optional[go.Figure]:
         """Scatter plot: individual repetition dots + bold mean line per group. No baselines.
 
@@ -341,11 +373,15 @@ class PlotGenerator:
         full-opacity ``+`` (cross) marker trace per group covering every point of
         every repetition, and no aggregated mean line. This reproduces the old
         ``sns.relplot(marker="+", hue="Used LLH")`` figures.
+
+        ``axis_bounds`` is an optional ``AxisBounds`` instance that overrides the
+        auto-computed axis ranges for the current instance's tab.
         """
         if not show_mean_line:
             return self._create_pure_scatter(
                 objective, grouped_series, plot_config,
                 title_suffix=title_suffix, known_optimum=known_optimum,
+                axis_bounds=axis_bounds,
             )
 
         traces = []
@@ -422,9 +458,7 @@ class PlotGenerator:
             legend=_LEGEND_STYLE,
         )
         self._apply_axis_config(layout, plot_config)
-        y_range = self._compute_robust_y_range(all_values)
-        if y_range:
-            layout['yaxis']['range'] = y_range
+        self._apply_axis_bounds(layout, axis_bounds, all_values)
         if known_optimum is not None:
             self._add_optimum_to_layout(layout, known_optimum)
             traces.append(self._optimum_trace(known_optimum))
@@ -438,6 +472,7 @@ class PlotGenerator:
         plot_config: PlotConfig,
         title_suffix: str = "",
         known_optimum: Optional[float] = None,
+        axis_bounds: Optional[Any] = None,
     ) -> Optional[go.Figure]:
         """One full-opacity ``+`` marker trace per group, no mean line.
 
@@ -487,9 +522,7 @@ class PlotGenerator:
             legend=_LEGEND_STYLE,
         )
         self._apply_axis_config(layout, plot_config)
-        y_range = self._compute_robust_y_range(all_values)
-        if y_range:
-            layout['yaxis']['range'] = y_range
+        self._apply_axis_bounds(layout, axis_bounds, all_values)
         if known_optimum is not None:
             self._add_optimum_to_layout(layout, known_optimum)
             traces.append(self._optimum_trace(known_optimum))

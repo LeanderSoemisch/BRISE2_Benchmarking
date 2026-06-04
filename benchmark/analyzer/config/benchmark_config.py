@@ -41,6 +41,18 @@ class Constants:
 
 
 @dataclass
+class AxisBounds:
+    """Fixed axis limits for a single instance's scatter plot tab.
+
+    All fields are optional — only the ones present override the auto-range.
+    """
+    x_min: Optional[float] = None
+    x_max: Optional[float] = None
+    y_min: Optional[float] = None
+    y_max: Optional[float] = None
+
+
+@dataclass
 class PlotConfig:
     """Configuration for a single plot"""
     plot_type: str
@@ -73,6 +85,10 @@ class PlotConfig:
     # trace per group, no aggregated mean line). True keeps the faint-dots +
     # bold-mean-line style. Set False to reproduce the old single-rep figures.
     scatter_show_mean_line: bool = True
+    # Per-instance fixed axis limits for this scatter plot, keyed by the same
+    # instance names as KnownOptima. Only axes with an explicit value override
+    # the auto-range; others remain auto-ranged.
+    known_axis_bounds: Dict[str, AxisBounds] = field(default_factory=dict)
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -250,6 +266,13 @@ class BenchmarkConfig:
     known_optima: Dict[str, float] = field(default_factory=dict)
 
     @staticmethod
+    def _float_or_none(v: Any) -> Optional[float]:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _parse_metric_type(metric_description: str) -> str:
         return MetricType.TIME.value if 'time' in metric_description.lower() else MetricType.ITERATION.value
 
@@ -313,6 +336,36 @@ class BenchmarkConfig:
 
         scatter_show_mean_line = bool(plot_data.get("showMeanLine", True))
 
+        # x bounds come from MetricAxis.KnownAxisBounds; y bounds from ObjectiveAxis.KnownAxisBounds.
+        # Both are optional and independent — each is keyed by instance name.
+        x_bounds: Dict[str, tuple] = {}
+        raw_metric_bounds = plot_data.get("MetricAxis", {}).get("KnownAxisBounds", {})
+        if isinstance(raw_metric_bounds, dict):
+            for inst_key, val in raw_metric_bounds.items():
+                if isinstance(val, dict):
+                    x_bounds[inst_key] = (
+                        BenchmarkConfig._float_or_none(val.get("xMin")),
+                        BenchmarkConfig._float_or_none(val.get("xMax")),
+                    )
+
+        y_bounds: Dict[str, tuple] = {}
+        raw_obj_bounds = plot_data.get("ObjectiveAxis", {}).get("KnownAxisBounds", {})
+        if isinstance(raw_obj_bounds, dict):
+            for inst_key, val in raw_obj_bounds.items():
+                if isinstance(val, dict):
+                    y_bounds[inst_key] = (
+                        BenchmarkConfig._float_or_none(val.get("yMin")),
+                        BenchmarkConfig._float_or_none(val.get("yMax")),
+                    )
+
+        known_axis_bounds: Dict[str, AxisBounds] = {}
+        for inst_key in set(x_bounds) | set(y_bounds):
+            x_min, x_max = x_bounds.get(inst_key, (None, None))
+            y_min, y_max = y_bounds.get(inst_key, (None, None))
+            known_axis_bounds[inst_key] = AxisBounds(
+                x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+            )
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -332,6 +385,7 @@ class BenchmarkConfig:
             min_reps_ratio=min_reps_ratio,
             group_by=group_by,
             scatter_show_mean_line=scatter_show_mean_line,
+            known_axis_bounds=known_axis_bounds,
         )
 
     @staticmethod
