@@ -1,8 +1,17 @@
 # BRISE 2.6.0
 ##### Benchmark Reduction via Adaptive Instance Selection
-![BRISE-CI](https://github.com/dpukhkaiev/BRISE2/workflows/BRISE-CI/badge.svg)
 
 A Software Product Line for Parameter Tuning 
+
+## Paper: Feature-model-based Benchmark Analysis for Highly-configurable Optimizers
+## Use case:  Combined Selection and Parameter Control of Meta-heuristics
+
+## Video: [Link](https://github.com/dpukhkaiev/BRISE2/blob/benchmark_analysis/benchmark/study_results/BRISE_Benchmark_Video.mp4)
+
+### Initial study: [Link towards the branch](https://github.com/dpukhkaiev/BRISE2/tree/GenericPC)
+### New benchmarking component: [Link](https://github.com/dpukhkaiev/BRISE2/tree/benchmark_analysis/benchmark)
+### Experiment data:  [Link](https://github.com/dpukhkaiev/BRISE2/tree/benchmark_analysis/benchmark/study_results/genericPC/full_benchmark)
+### Generated report: [Link](https://github.com/dpukhkaiev/BRISE2/tree/benchmark_analysis/benchmark/study_results/genericPC/reports)
 
 ## Getting started
 #### Requirements
