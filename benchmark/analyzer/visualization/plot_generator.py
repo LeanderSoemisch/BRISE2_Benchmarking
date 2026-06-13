@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import List, Optional, Dict, Any, Tuple
 
 import numpy as np
@@ -544,7 +545,7 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
@@ -685,7 +686,7 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
@@ -749,12 +750,37 @@ class PlotGenerator:
         return go.Figure(data=traces, layout=layout)
 
     @staticmethod
-    def _extract_baseline_final_values(
+    def _extract_baseline_values(
         baseline_result: Any,
         objective: str,
         objective_instance: Optional[str] = None,
         extractor: Optional[Any] = None,
+        full_run: bool = False,
     ) -> List[float]:
+        def _reduce(trajectory: Optional[List[float]]) -> List[float]:
+            if not trajectory:
+                return []
+            if full_run:
+                return [v for v in trajectory if v is not None and np.isfinite(v)]
+            final_value = trajectory[-1]
+            if final_value is not None and np.isfinite(final_value):
+                return [final_value]
+            return []
+
+        # Full-run distribution: use the same (possibly normalized) trajectory the
+        # other plots use, so the baseline box stays on the same scale as the
+        # normalized experiment series instead of falling back to raw values.
+        if full_run:
+            cache_key = objective_instance or objective
+            return _reduce(extract_baseline_trajectory(
+                baseline_result,
+                cache_key,
+                prefer_cached=True,
+                best_so_far_fallback=True,
+                minimize=True,
+                result_key=objective,
+            ))
+
         raw_experiments = getattr(baseline_result, 'raw_experiments', None)
         if raw_experiments:
             filtered_experiments = raw_experiments
@@ -777,10 +803,7 @@ class PlotGenerator:
                     trajectory = extract_best_so_far_series(
                         exp, objective, minimize=True, only_enabled_improves=False
                     )
-                if trajectory:
-                    final_value = trajectory[-1]
-                    if final_value is not None and np.isfinite(final_value):
-                        values.append(final_value)
+                values.extend(_reduce(trajectory))
             return values
 
         raw_experiment = getattr(baseline_result, 'raw_experiment', None)
@@ -791,11 +814,7 @@ class PlotGenerator:
                 trajectory = extract_best_so_far_series(
                     raw_experiment, objective, minimize=True, only_enabled_improves=False
                 )
-            if trajectory:
-                final_value = trajectory[-1]
-                if final_value is not None and np.isfinite(final_value):
-                    return [final_value]
-            return []
+            return _reduce(trajectory)
 
         cache_key = objective_instance or objective
         trajectory = extract_baseline_trajectory(
@@ -806,11 +825,7 @@ class PlotGenerator:
             minimize=True,
             result_key=objective,
         )
-        if trajectory:
-            final_value = trajectory[-1]
-            if final_value is not None and np.isfinite(final_value):
-                return [final_value]
-        return []
+        return _reduce(trajectory)
 
     def create_box_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
             plot_config: PlotConfig, baselines: Dict[str, Any] = None,
@@ -819,15 +834,23 @@ class PlotGenerator:
         traces = []
         all_values = []
 
+        # Without grouping, each box shows the objective distribution of an
+        # approach over its whole run (where it started -> where it finished),
+        # pooled across repetitions sharing a display name. Using only the final
+        # value would collapse the box to a single flat line.
+        values_by_name: "OrderedDict[str, List[float]]" = OrderedDict()
         for series, name in zip(data_series, experiment_names):
             if not series:
                 continue
-            final_value = series[-1]
-            if final_value is None or not np.isfinite(final_value):
+            finite = [v for v in series if v is not None and np.isfinite(v)]
+            if not finite:
                 continue
-            all_values.append(final_value)
+            values_by_name.setdefault(name, []).extend(finite)
+
+        for name, values in values_by_name.items():
+            all_values.extend(values)
             traces.append(go.Box(
-                y=[final_value],
+                y=values,
                 name=name,
                 boxmean=False,
                 boxpoints=False,
@@ -837,11 +860,14 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                # No grouping: show the baseline's full-run distribution too,
+                # matching the experiment boxes above.
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
                     extractor=None,
+                    full_run=True,
                 )
                 if baseline_values:
                     all_values.extend(baseline_values)
