@@ -74,8 +74,11 @@ class InteractiveBaselineAnalyzer:
         def on_selection_complete(selected):
             logger.info(f"User selected {len(selected)} baseline(s): {selected}")
             analyzer.baseline_selector.save_selection(selected)
-            analyzer.selected_baselines = selected
+            # Regenerate the report BEFORE signalling completion, so the waiting
+            # main thread (and init.sh show_report) only proceeds once the fresh
+            # report has actually been written - otherwise a stale report is opened.
             analyzer._analyze_with_baselines(selected, output_html, output_csv)
+            analyzer.selected_baselines = selected
 
         url = self.server.start(html_content, output_html, on_selection_complete)
         logger.info(f"Opening baseline selection interface at {url}")
