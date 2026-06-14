@@ -7,6 +7,10 @@ from analyzer.config import MetricType
 class MetricExtractor:
     """Extracts metrics and objectives from experiments"""
 
+    # Tracks (objective, llh_path) pairs already warned about, so the
+    # "no values filled" LLH warning is logged once per config, not per experiment.
+    _llh_empty_warned: Set[Tuple[str, str]] = set()
+
     @staticmethod
     def discover_objectives(experiments: List[Any]) -> Set[str]:
         """Discover all objective keys from experiments"""
@@ -97,12 +101,16 @@ class MetricExtractor:
                 filled += 1
 
         if filled == 0 and n > 0:
-            _log.warning(
-                "extract_llh_series: no values filled for objective=%r llh_path=%r "
-                "(n_configs=%d, unknown_llh=%s). "
-                "Check that the hyperparameter path and name mapping are correct.",
-                objective, llh_path, n, unknown_llh_values or "(none found)",
-            )
+            warn_key = (objective, llh_path)
+            if warn_key not in MetricExtractor._llh_empty_warned:
+                MetricExtractor._llh_empty_warned.add(warn_key)
+                _log.warning(
+                    "extract_llh_series: no values filled for objective=%r llh_path=%r "
+                    "(n_configs=%d, unknown_llh=%s). "
+                    "Check that the hyperparameter path and name mapping are correct. "
+                    "(further identical warnings for this config suppressed)",
+                    objective, llh_path, n, unknown_llh_values or "(none found)",
+                )
         elif unknown_llh_values:
             _log.debug(
                 "extract_llh_series: unrecognised LLH values (not in name_mapping): %s",
