@@ -35,29 +35,47 @@ class BaselineSelectionHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _safe_send_json(self, status: int, payload: dict):
+        """Send a JSON response, tolerating a client that already disconnected."""
+        try:
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            logger.info("Client disconnected before the response could be sent")
+
     def do_POST(self):
-        if self.path == '/select_baselines':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            try:
-                data = json.loads(post_data.decode('utf-8'))
-                selected = data.get('selected_baselines', [])
-
-                if selected and BaselineSelectionHandler.selection_callback:
-                    BaselineSelectionHandler.selection_callback(selected)
-                    response = {'success': True, 'message': f'Selected {len(selected)} baseline(s)', 'report_url': '/report'}
-                else:
-                    response = {'success': False, 'message': 'No baselines selected'}
-
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps(response).encode())
-            except Exception as e:
-                logger.error(f"Error processing baseline selection: {e}")
-                self.send_error(500, str(e))
-        else:
+        if self.path != '/select_baselines':
             self.send_error(404)
+            return
+
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length)
+            selected = json.loads(post_data.decode('utf-8')).get('selected_baselines', [])
+        except Exception as e:
+            logger.error(f"Error parsing baseline selection: {e}")
+            self._safe_send_json(400, {'success': False, 'message': 'Invalid request'})
+            return
+
+        if not (selected and BaselineSelectionHandler.selection_callback):
+            self._safe_send_json(200, {'success': False, 'message': 'No baselines selected'})
+            return
+
+        # Acknowledge immediately, then run the (potentially long) analysis. The
+        # browser closes the selection window shortly after posting, so writing
+        # the response after the analysis would hit a broken pipe.
+        self._safe_send_json(200, {
+            'success': True,
+            'message': f'Selected {len(selected)} baseline(s)',
+            'report_url': '/report',
+        })
+        try:
+            BaselineSelectionHandler.selection_callback(selected)
+        except Exception as e:
+            logger.error(f"Error running analysis after baseline selection: {e}", exc_info=True)
 
 
 class BaselineSelectionServer:
