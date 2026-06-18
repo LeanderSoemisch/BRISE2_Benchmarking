@@ -13,6 +13,8 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -103,6 +105,7 @@ jobs:
           curl -sSL --fail "$url" -o badge-data/coverage.svg
       # Commit updated badge svg
       - name: Commit badge data
+        if: github.event_name == 'push'
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "Update coverage badge"
