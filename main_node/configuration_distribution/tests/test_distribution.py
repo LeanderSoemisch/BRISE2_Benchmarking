@@ -443,29 +443,30 @@ class TestBatchedDistribution(unittest.TestCase):
 
         # * Mock its state and wait() method
         mock_barrier_instance.n_waiting = 2 # ? Simulate 2 workers already waiting
-        mock_barrier_instance.wait.return_value = None # ? Ensure wait() doesn't block
+        mock_barrier_instance.wait.return_value = 0 # ? This thread is the designated publisher (index 0)
 
         # * Manually call the target method (as the mocked thread would)
         distributionAlgorithm.handle_configuration_distribution(self.experiment_id, self.body)
-        
+
         # ? --- Assertions for handle_configuration_distribution logic ---
 
         expected_log_calls = [
             call(f"Creating new barrier with size {distributionAlgorithm._batch_size}"), # ? From dispatch
-            call("Waiting for all workers to be synchronized"), 
+            call("Waiting for all workers to be synchronized"),
             call('Workers currently waiting 3'), # ? 2 waiting + 1 current = 3
             call("Worker synchronized"),
         ]
         distributionAlgorithm.logger.info.assert_has_calls(expected_log_calls, any_order=False)
-        
+
         # * Check that the barrier was correctly waited upon
         mock_barrier_instance.wait.assert_called_once()
-        
-        # * Check that publish was called
+
+        # * Check that exactly ONE wave request was published with worker_capacity = batchSize
+        expected_wave_body = json.dumps({"worker_capacity": distributionAlgorithm._batch_size})
         mock_publish.assert_called_once_with(
             exchange='get_new_configuration_exchange',
             routing_key=self.experiment_id,
-            body=self.body
+            body=expected_wave_body
         )
 
     # ? --- Test broken-barrier recovery (incomplete wave) ---
@@ -490,6 +491,34 @@ class TestBatchedDistribution(unittest.TestCase):
         # * ...and this worker does not proceed to publish for the failed wave.
         mock_publish.assert_not_called()
         distribution_algorithm.logger.warning.assert_called_once()
+
+    @patch('configuration_distribution.batchedDistribution.publish')
+    def test_only_one_worker_per_wave_publishes(self, mock_publish):
+        """
+        Multi-point proposal: a released wave must trigger exactly ONE selection
+        request (worker_capacity = batchSize), not one per released worker. Only
+        the worker that gets barrier index 0 publishes; the others stay silent.
+        """
+        distribution_algorithm = BatchedDistribution(self.config)
+        distribution_algorithm.logger = MagicMock()
+
+        mock_barrier = MagicMock()
+        mock_barrier.n_waiting = 0
+        distribution_algorithm._barrier = mock_barrier
+
+        # The non-publisher worker (index != 0) must not publish.
+        mock_barrier.wait.return_value = 3
+        distribution_algorithm.handle_configuration_distribution(self.experiment_id, self.body)
+        mock_publish.assert_not_called()
+
+        # The designated publisher (index 0) emits a single wave request.
+        mock_barrier.wait.return_value = 0
+        distribution_algorithm.handle_configuration_distribution(self.experiment_id, self.body)
+        mock_publish.assert_called_once_with(
+            exchange='get_new_configuration_exchange',
+            routing_key=self.experiment_id,
+            body=json.dumps({"worker_capacity": distribution_algorithm._batch_size})
+        )
 
     @patch('threading.Thread')
     def test_dispatch_replaces_broken_barrier(self, MockThread):
@@ -630,7 +659,9 @@ class TestHybridDistribution(unittest.TestCase):
         
         # * Prepare the mock gate instance
         mock_gate_instance = MockEventGate.return_value
-        
+        # ? This worker is the designated publisher for the wave
+        mock_gate_instance.wait_at_gate.return_value = True
+
         # * Call dispatch
         # ? This will update evaluation_times with the new body's time (2.0)
         distributionAlgorithm.dispatch(self.experiment_id, self.body) 
@@ -670,12 +701,13 @@ class TestHybridDistribution(unittest.TestCase):
         
         # * Check that the worker waited at the gate
         mock_gate_instance.wait_at_gate.assert_called_once()
-        
-        # * Check that the new configuration was published after unblocking from the gate
+
+        # * Check that exactly ONE wave request was published with worker_capacity = batchSize
+        expected_wave_body = json.dumps({"worker_capacity": distributionAlgorithm._batch_size})
         mock_publish.assert_called_once_with(
             exchange='get_new_configuration_exchange',
             routing_key=self.experiment_id,
-            body=self.body
+            body=expected_wave_body
         )
 
     @patch('threading.Thread')
@@ -690,24 +722,27 @@ class TestHybridDistribution(unittest.TestCase):
         # * Setup
         distributionAlgorithm = HybridDistribution(self.config)
         mock_gate_instance = MagicMock()
+        # ? This worker is the designated publisher for the wave
+        mock_gate_instance.wait_at_gate.return_value = True
         distributionAlgorithm._gate = mock_gate_instance
-        
+
         # * Call the method for a subsequent worker
         distributionAlgorithm.handle_configuration_distribution(self.experiment_id, self.body)
-        
+
         # * Assertions
-        
+
         # * MockEventGate's constructor should NOT have been called, as it was reused.
         MockEventGate.assert_not_called()
-        
+
         # * The worker still waits at the gate.
         mock_gate_instance.wait_at_gate.assert_called_once()
-        
-        # * A new configuration is published after the wait.
+
+        # * A single wave request is published after the wait.
+        expected_wave_body = json.dumps({"worker_capacity": distributionAlgorithm._batch_size})
         mock_publish.assert_called_once_with(
             exchange='get_new_configuration_exchange',
             routing_key=self.experiment_id,
-            body=self.body
+            body=expected_wave_body
         )
         
     def test_cleanup_gate(self):
@@ -750,6 +785,32 @@ class TestEventGate(unittest.TestCase):
         cleanup.assert_called_once()
         stats = cleanup.call_args[0][0]
         self.assertEqual(stats["result"], "completion")
+
+    def test_exactly_one_publisher_per_wave(self):
+        """
+        wait_at_gate returns True for exactly one released worker (the designated
+        publisher) and False for the rest, so a wave produces a single selection
+        request regardless of how many workers it released.
+        """
+        cleanup = MagicMock()
+        gate = EventGate(3, 30, cleanup)
+
+        results = []
+        results_lock = threading.Lock()
+
+        def worker():
+            should_publish = gate.wait_at_gate()
+            with results_lock:
+                results.append(should_publish)
+
+        threads = [threading.Thread(target=worker) for _ in range(3)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        self.assertEqual(sum(1 for r in results if r), 1, "expected exactly one publisher per wave")
+        self.assertEqual(len(results), 3)
 
     def test_release_on_timeout(self):
         """An incomplete wave is released by the timeout instead of hanging."""

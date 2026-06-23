@@ -38,6 +38,11 @@ class EventGate:
         self.triggered = False
         self.timer = threading.Timer(self._timeout, self._trigger_by_timeout)
         self.timer.start()
+
+        # single-publisher logic: exactly one released worker per wave publishes
+        # the next selection request (see wait_at_gate / multi-point proposal).
+        self.publish_lock = threading.Lock()
+        self.has_published = False
         # self.logger.info(f"New gate created with batch_size {self._batch_size} and timeout {self._timeout}s")
 
     def _trigger_release(self, result: str):
@@ -96,33 +101,46 @@ class EventGate:
     def wait_at_gate(self):
         """
         The main barrier logic. The worker thread just waits here.
+
+        :return: True for exactly one released worker per wave (the designated
+                 publisher), False for the rest. The caller publishes a single
+                 next-wave selection request only when this is True.
         """
         # 1. Count arrival
         with self.count_lock:
             self.arrival_count += 1
-        
+
         self.logger.info(f'Workers currently waiting {str(self.arrival_count)}')
 
         # 2. Check if its the last one
         if self.arrival_count == self._batch_size:
             self._trigger_by_completion()
-        
+
         # 3. Wait until the gate is opened
         wait_start_time = time.time()
         self.gate.wait()
         wait_time = time.time() - wait_start_time
 
+        # Designate a single publisher for this wave: the first worker to reach
+        # this point after the gate opens. Avoids every released worker triggering
+        # its own single-point selection.
+        with self.publish_lock:
+            should_publish = not self.has_published
+            self.has_published = True
+
         is_last_reporter = False
-        
+
         with self.stats_lock:
             self.wait_times.append(wait_time)
-            
+
             # Check if the last worker was released
             if len(self.wait_times) == self.expected_reporters:
                 is_last_reporter = True
 
         if is_last_reporter:
             self._aggregate_and_cleanup()
+
+        return should_publish
 
 class HybridDistribution(AbstractDistribution):
     """
@@ -221,11 +239,16 @@ class HybridDistribution(AbstractDistribution):
 
         gate = self._get_or_create_gate()
 
-        gate.wait_at_gate()
+        should_publish = gate.wait_at_gate()
 
-        publish(exchange='get_new_configuration_exchange',
-                routing_key=experiment_id,
-                body=body)
+        # Emit exactly ONE request per release wave carrying the full batch size,
+        # so a single surrogate build proposes `batchSize` distinct points (true
+        # multi-point proposal) instead of every released worker proposing one.
+        if should_publish:
+            wave_body = json.dumps({"worker_capacity": self._batch_size})
+            publish(exchange='get_new_configuration_exchange',
+                    routing_key=experiment_id,
+                    body=wave_body)
 
     def dispatch(self, experiment_id, body):
 

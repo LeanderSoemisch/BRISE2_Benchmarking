@@ -32,10 +32,11 @@ class BatchedDistribution(AbstractDistribution):
 
         # ? wait until every worker has came to wait()
         barrier = self._barrier
+        release_index = None
         if barrier:
             self.logger.info(f'Workers currently waiting {str(barrier.n_waiting + 1)}')
             try:
-                barrier.wait()
+                release_index = barrier.wait()
             except threading.BrokenBarrierError:
                 # The wave was left incomplete (e.g. a worker died or the barrier
                 # was aborted/reset), so it can never release on its own. Discard
@@ -48,9 +49,17 @@ class BatchedDistribution(AbstractDistribution):
 
         self.logger.info(f"Worker synchronized")
 
-        publish(exchange='get_new_configuration_exchange',
-                routing_key=experiment_id,
-                body=body)
+        # Emit exactly ONE request per release wave carrying the full batch size,
+        # so a single surrogate build proposes `batchSize` distinct points (true
+        # multi-point proposal). `Barrier.wait()` hands out a unique index per
+        # released thread; we let index 0 publish. Previously every released worker
+        # published its own `worker_capacity = 1` request, which collapsed the
+        # wave into `batchSize` independent single-point builds.
+        if release_index in (None, 0):
+            wave_body = json.dumps({"worker_capacity": self._batch_size})
+            publish(exchange='get_new_configuration_exchange',
+                    routing_key=experiment_id,
+                    body=wave_body)
 
     def _discard_broken_barrier(self, barrier):
         """Drop a broken barrier, unless a fresh one has already replaced it."""

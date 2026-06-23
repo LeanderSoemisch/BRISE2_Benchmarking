@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import threading
 from typing import List, Tuple
 from copy import deepcopy
 
@@ -33,6 +34,15 @@ class ConfigurationSelection:
                                                                                self.experiment.unique_id)
         else:
             self.transfer_is_enabled = False
+
+        # Serializes one wave of selection at a time. With batched/hybrid
+        # distribution a wave is already published by a single thread and waves
+        # cannot overlap (the barrier/gate holds the next wave until the current
+        # batch returns), so this lock is uncontended today. It guards the
+        # read-modify-write of Experiment state (evaluated/measured configurations
+        # and model updates) against a future asynchronous-update path that would
+        # let results — and therefore selection — overlap.
+        self._selection_lock = threading.Lock()
 
         self.logger = logging.getLogger(__name__)
         if os.environ.get('TEST_MODE') != 'UNIT_TEST':
@@ -131,43 +141,50 @@ class ConfigurationSelection:
                 if model_transfer_module is not None:
                     predicted_configs.extend(self._regular_prediction(needed_configs, number_of_predicted_configs))
 
-        for c in predicted_configs:
-            if c not in self.experiment.evaluated_configurations:
-                temp_msg = f"The model predicted {c}."
+        # De-duplicate the (possibly N) predicted points against already-evaluated
+        # configurations and register them atomically, so a wave's points are
+        # checked-then-added as one critical section. Each point is handled
+        # independently, so a wave may yield fewer than N configs when the space
+        # is nearly exhausted (duplicates trigger a resample, or a stop when the
+        # whole search space is already measured).
+        with self._selection_lock:
+            for c in predicted_configs:
+                if c not in self.experiment.evaluated_configurations:
+                    temp_msg = f"The model predicted {c}."
+                    self.logger.info(temp_msg)
+                    configs_to_be_evaluated.append(c)
+                elif len(self.experiment.measured_configurations) == self.experiment.search_space.size:
+                    msg = "Entire Search Space has been already evaluated. Shutting down."
+                    self.logger.info(msg)
+                    if os.environ.get('TEST_MODE') != 'UNIT_TEST':
+                        publish(exchange='stop_experiment_exchange',
+                                routing_key=self.experiment.unique_id,
+                                body=msg)
+
+                else:
+                    sampled_config = self.predictor.predict(self.experiment.measured_configurations, True)[0]
+                    temp_msg = f"Predicted configuration {c} has already been evaluated. Randomly sampled {sampled_config}."
+                    self.logger.info(temp_msg)
+                    configs_to_be_evaluated.append(sampled_config)
+
+            hierarchical_configs = []
+            for c in configs_to_be_evaluated:
+                self.experiment.add_evaluated_configuration_to_experiment(c)
+                if c.type is Configuration.Type.PREDICTED:
+                    self.experiment.update_model_state(True)
+                else:
+                    self.experiment.update_model_state(False)
                 self.logger.info(temp_msg)
-                configs_to_be_evaluated.append(c)
-            elif len(self.experiment.measured_configurations) == self.experiment.search_space.size:
-                msg = "Entire Search Space has been already evaluated. Shutting down."
-                self.logger.info(msg)
+                c_to_send = deepcopy(c)
+                if self.experiment.search_space.is_flat:
+                    c_to_send.parameters = self.experiment.search_space.transform_flat_parameters_to_hierarchic(
+                        c.parameters)
+                hierarchical_configs.append(c_to_send)
+                self.sub.send('log', 'info', message=temp_msg)
                 if os.environ.get('TEST_MODE') != 'UNIT_TEST':
-                    publish(exchange='stop_experiment_exchange',
+                    publish(exchange='measure_new_configuration_exchange',
                             routing_key=self.experiment.unique_id,
-                            body=msg)
-
-            else:
-                sampled_config = self.predictor.predict(self.experiment.measured_configurations, True)[0]
-                temp_msg = f"Predicted configuration {c} has already been evaluated. Randomly sampled {sampled_config}."
-                self.logger.info(temp_msg)
-                configs_to_be_evaluated.append(sampled_config)
-
-        hierarchical_configs = []
-        for c in configs_to_be_evaluated:
-            self.experiment.add_evaluated_configuration_to_experiment(c)
-            if c.type is Configuration.Type.PREDICTED:
-                self.experiment.update_model_state(True)
-            else:
-                self.experiment.update_model_state(False)
-            self.logger.info(temp_msg)
-            c_to_send = deepcopy(c)
-            if self.experiment.search_space.is_flat:
-                c_to_send.parameters = self.experiment.search_space.transform_flat_parameters_to_hierarchic(
-                    c.parameters)
-            hierarchical_configs.append(c_to_send)
-            self.sub.send('log', 'info', message=temp_msg)
-            if os.environ.get('TEST_MODE') != 'UNIT_TEST':
-                publish(exchange='measure_new_configuration_exchange',
-                        routing_key=self.experiment.unique_id,
-                        body=json.dumps({"configuration": c_to_send.to_json()}))
+                            body=json.dumps({"configuration": c_to_send.to_json()}))
 
         return configs_to_be_evaluated, hierarchical_configs
 
