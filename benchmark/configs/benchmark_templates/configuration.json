@@ -42,19 +42,15 @@
             { "path": "hhpc_variant", "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR" }
           ],
           "CustomGrouping": {
-            "valueGroups": [
-              {
-                "path": "hhpc_variant",
-                "groups": [
-                  { "value": "S-TPE",        "displayName": "S-TPE" },
-                  { "value": "S-BRR",        "displayName": "S-BRR" },
-                  { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
-                  { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
-                  { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
-                  { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
-                ]
-              }
-            ]
+            "ValueGroupSpec": {
+              "path": "hhpc_variant",
+              "ValueGroupEntry_0": { "value": "S-TPE",        "displayName": "S-TPE" },
+              "ValueGroupEntry_1": { "value": "S-BRR",        "displayName": "S-BRR" },
+              "ValueGroupEntry_2": { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
+              "ValueGroupEntry_3": { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
+              "ValueGroupEntry_4": { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
+              "ValueGroupEntry_5": { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
+            }
           },
           "MetricAxis": {
             "metricDescription": "iterations completed",
@@ -81,19 +77,15 @@
             { "path": "hhpc_variant", "pattern": "S-TPE|S-BRR|FRAMAB-H-TPE|FRAMAB-H-BRR|BRR-H-TPE|BRR-H-BRR" }
           ],
           "CustomGrouping": {
-            "valueGroups": [
-              {
-                "path": "hhpc_variant",
-                "groups": [
-                  { "value": "S-TPE",        "displayName": "S-TPE" },
-                  { "value": "S-BRR",        "displayName": "S-BRR" },
-                  { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
-                  { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
-                  { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
-                  { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
-                ]
-              }
-            ]
+            "ValueGroupSpec": {
+              "path": "hhpc_variant",
+              "ValueGroupEntry_0": { "value": "S-TPE",        "displayName": "S-TPE" },
+              "ValueGroupEntry_1": { "value": "S-BRR",        "displayName": "S-BRR" },
+              "ValueGroupEntry_2": { "value": "FRAMAB-H-TPE", "displayName": "FRAMAB-H-TPE" },
+              "ValueGroupEntry_3": { "value": "FRAMAB-H-BRR", "displayName": "FRAMAB-H-BRR" },
+              "ValueGroupEntry_4": { "value": "BRR-H-TPE",    "displayName": "BRR-H-TPE" },
+              "ValueGroupEntry_5": { "value": "BRR-H-BRR",    "displayName": "BRR-H-BRR" }
+            }
           },
           "MetricAxis": {
             "metricDescription": "iterations completed",
@@ -106,6 +98,186 @@
             "NormalizationStrategy": { "MinOverAll": { "Type": "min_over_all_experiments" } },
             "label": "Final Objective (tour length)",
             "scale": "linear"
+          }
+        }
+      }
+    },
+    "Plot_2": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: FRAMAB-H-TPE",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "FRAMAB-H-TPE" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "ValueGroupSpec": {
+              "path": "low level heuristic",
+              "ValueGroupEntry_0": { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+              "ValueGroupEntry_1": { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+              "ValueGroupEntry_2": { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+            }
+          },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
+          }
+        }
+      }
+    },
+    "Plot_3": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: FRAMAB-H-BRR",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "FRAMAB-H-BRR" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "ValueGroupSpec": {
+              "path": "low level heuristic",
+              "ValueGroupEntry_0": { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+              "ValueGroupEntry_1": { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+              "ValueGroupEntry_2": { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+            }
+          },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
+          }
+        }
+      }
+    },
+    "Plot_4": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: BRR-H-TPE",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "BRR-H-TPE" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "ValueGroupSpec": {
+              "path": "low level heuristic",
+              "ValueGroupEntry_0": { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+              "ValueGroupEntry_1": { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+              "ValueGroupEntry_2": { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+            }
+          },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
+          }
+        }
+      }
+    },
+    "Plot_5": {
+      "PlotType": {
+        "ScatterPlot": {
+          "Type": "scatter_plot",
+          "enableGrouping": true,
+          "groupBy": "hyperparameter",
+          "title": "LLH Selection per Iteration: BRR-H-BRR",
+          "showMeanLine": false,
+          "filterConditions": [
+            { "path": "hhpc_variant", "pattern": "BRR-H-BRR" },
+            { "path": "repetition", "value": "0" }
+          ],
+          "CustomGrouping": {
+            "ValueGroupSpec": {
+              "path": "low level heuristic",
+              "ValueGroupEntry_0": { "value": "jMetalPy.EvolutionStrategy", "displayName": "py.ES" },
+              "ValueGroupEntry_1": { "value": "jMetalPy.SimulatedAnnealing","displayName": "py.SA" },
+              "ValueGroupEntry_2": { "value": "jMetal.EvolutionStrategy",   "displayName": "j.ES"  }
+            }
+          },
+          "MetricAxis": {
+            "label": "Iteration",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "xMin": 0, "xMax": 400 },
+              "pr439.tsp":   { "xMin": 0, "xMax": 400 },
+              "rat783.tsp":  { "xMin": 0, "xMax": 400 },
+              "pla7397.tsp": { "xMin": 0, "xMax": 200 }
+            }
+          },
+          "ObjectiveAxis": {
+            "objectivesToPlot": ["objective"],
+            "normalize": false,
+            "label": "Objective (tour length)",
+            "scale": "linear",
+            "KnownAxisBounds": {
+              "kroA100.tsp": { "yMin": 0, "yMax": 175000 },
+              "pr439.tsp":   { "yMin": 0, "yMax": 2000000 },
+              "rat783.tsp":  { "yMin": 0, "yMax": 200000 },
+              "pla7397.tsp": { "yMin": 0, "yMax": 3000000000 }
+            }
           }
         }
       }

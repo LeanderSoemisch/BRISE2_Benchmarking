@@ -604,10 +604,14 @@ class BRISEBenchmarkRunner:
 
         self._base_experiment_description, self._base_search_space = \
            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_grid_search_baseline.json")
+        experiment_description = self.base_experiment_description
+        experiment_description.update(deepcopy(time_based_sc_skeleton))
         self.execute_experiment(experiment_description, number_of_repetitions=1)
 
         self._base_experiment_description, self._base_search_space = \
            load_experiment_setup("./Resources/tests/test_cases_product_configurations/test_random_search_baseline.json")
+        experiment_description = self.base_experiment_description
+        experiment_description.update(deepcopy(time_based_sc_skeleton))
         self.execute_experiment(experiment_description, number_of_repetitions=1)
 
         return self.counter

@@ -7,6 +7,10 @@ from analyzer.config import MetricType
 class MetricExtractor:
     """Extracts metrics and objectives from experiments"""
 
+    # Tracks (objective, llh_path) pairs already warned about, so the
+    # "no values filled" LLH warning is logged once per config, not per experiment.
+    _llh_empty_warned: Set[Tuple[str, str]] = set()
+
     @staticmethod
     def discover_objectives(experiments: List[Any]) -> Set[str]:
         """Discover all objective keys from experiments"""
@@ -42,6 +46,88 @@ class MetricExtractor:
                     current_best = fval
                 values.append(current_best)
 
+        return values
+
+    @staticmethod
+    def extract_llh_series(
+        exp: Any,
+        objective: str,
+        llh_path: str,
+        name_mapping: Dict[str, str],
+    ) -> Dict[str, List[Optional[float]]]:
+        """Extract per-LLH sparse objective series from an HH experiment.
+
+        For each configuration measurement, looks up the selected LLH via
+        ``llh_path`` in the hyperparameters dict, maps it to a display name via
+        ``name_mapping``, and records the raw objective value at that iteration.
+        Returns a dict ``{display_name: series}`` where ``series[i]`` is the
+        objective value if that LLH was selected at iteration i, else ``None``.
+        """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+
+        display_names = list(name_mapping.values())
+        cfgs = getattr(exp, 'measured_configurations', [])
+        n = len(cfgs)
+        result: Dict[str, List[Optional[float]]] = {name: [None] * n for name in display_names}
+
+        unknown_llh_values: set = set()
+        filled = 0
+
+        for i, conf in enumerate(cfgs):
+            # Prefer the private backing field: when core_entities is unavailable at
+            # unpickle time, the `hyperparameters` property is not callable but
+            # `_hyperparameters` (the OrderedDict) is still restored from __dict__.
+            hp = getattr(conf, '_hyperparameters', None) or getattr(conf, 'hyperparameters', None)
+            if hp is None:
+                continue
+            # Normalise to plain dict — handles dict, OrderedDict, and ConfigSpace Configuration
+            if not isinstance(hp, dict):
+                try:
+                    hp = dict(hp)
+                except (TypeError, ValueError):
+                    continue
+            llh_raw = hp.get(llh_path)
+            if llh_raw is None:
+                continue
+            display = name_mapping.get(str(llh_raw))
+            if display is None:
+                unknown_llh_values.add(str(llh_raw))
+                continue
+            results_dict = getattr(conf, 'results', {})
+            val = results_dict.get(objective) if results_dict else None
+            if val is not None and MetricExtractor._is_valid_numeric(val):
+                result[display][i] = float(val)
+                filled += 1
+
+        if filled == 0 and n > 0:
+            warn_key = (objective, llh_path)
+            if warn_key not in MetricExtractor._llh_empty_warned:
+                MetricExtractor._llh_empty_warned.add(warn_key)
+                _log.warning(
+                    "extract_llh_series: no values filled for objective=%r llh_path=%r "
+                    "(n_configs=%d, unknown_llh=%s). "
+                    "Check that the hyperparameter path and name mapping are correct. "
+                    "(further identical warnings for this config suppressed)",
+                    objective, llh_path, n, unknown_llh_values or "(none found)",
+                )
+        elif unknown_llh_values:
+            _log.debug(
+                "extract_llh_series: unrecognised LLH values (not in name_mapping): %s",
+                unknown_llh_values,
+            )
+
+        return result
+
+    @staticmethod
+    def extract_raw_objective_series(exp: Any, objective: str) -> List[float]:
+        """Extract raw (non-cumulative) objective values per measured configuration."""
+        values: List[float] = []
+        for conf in getattr(exp, 'measured_configurations', []):
+            results = getattr(conf, 'results', {})
+            val = results.get(objective) if results else None
+            if val is not None and MetricExtractor._is_valid_numeric(val):
+                values.append(float(val))
         return values
 
     @staticmethod

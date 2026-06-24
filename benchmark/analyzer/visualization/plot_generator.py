@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import List, Optional, Dict, Any, Tuple
 
 import numpy as np
@@ -62,6 +63,37 @@ class PlotGenerator:
             layout['xaxis']['type'] = 'log'
         if plot_config.objective_scale == ScaleType.LOG10.value:
             layout['yaxis']['type'] = 'log'
+
+    @staticmethod
+    def _apply_axis_bounds(layout: Dict[str, Any], axis_bounds: Optional[Any], fallback_values: List[float]) -> None:
+        """Apply axis ranges from ``axis_bounds`` (an ``AxisBounds`` instance).
+
+        For each axis, if an explicit bound is present it takes precedence over the
+        auto-computed range; otherwise the fallback auto-range is used.  Mixing is
+        supported: e.g. ``x_max`` fixed, ``y_min``/``y_max`` auto.
+        """
+        # --- x axis ---
+        x_min_explicit = getattr(axis_bounds, 'x_min', None) if axis_bounds else None
+        x_max_explicit = getattr(axis_bounds, 'x_max', None) if axis_bounds else None
+        if x_min_explicit is not None or x_max_explicit is not None:
+            x_min = x_min_explicit if x_min_explicit is not None else 0
+            x_max = x_max_explicit  # None means Plotly auto-range on the upper side (rare)
+            layout['xaxis']['range'] = [x_min, x_max]
+
+        # --- y axis ---
+        y_min_explicit = getattr(axis_bounds, 'y_min', None) if axis_bounds else None
+        y_max_explicit = getattr(axis_bounds, 'y_max', None) if axis_bounds else None
+        if y_min_explicit is not None or y_max_explicit is not None:
+            y_min = y_min_explicit if y_min_explicit is not None else 0
+            y_max = y_max_explicit if y_max_explicit is not None else (
+                max(fallback_values) * 1.05 if fallback_values else None
+            )
+            layout['yaxis']['range'] = [y_min, y_max]
+        else:
+            # Fall back to auto-range from data
+            y_range = PlotGenerator._compute_robust_y_range(fallback_values)
+            if y_range:
+                layout['yaxis']['range'] = y_range
 
     @staticmethod
     def _optimum_trace(known_optimum: float) -> go.Scatter:
@@ -322,6 +354,182 @@ class PlotGenerator:
 
         return go.Figure(data=traces, layout=layout)
 
+    def create_scatter_plot_from_series(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+        show_mean_line: bool = True,
+        axis_bounds: Optional[Any] = None,
+    ) -> Optional[go.Figure]:
+        """Scatter plot: individual repetition dots + bold mean line per group. No baselines.
+
+        Handles sparse series where ``None`` indicates the LLH was not selected at
+        that iteration — only non-None values are plotted as dots, and the mean
+        line is computed ignoring None entries.
+
+        When ``show_mean_line`` is False a *pure* scatter is drawn instead: one
+        full-opacity ``+`` (cross) marker trace per group covering every point of
+        every repetition, and no aggregated mean line. This reproduces the old
+        ``sns.relplot(marker="+", hue="Used LLH")`` figures.
+
+        ``axis_bounds`` is an optional ``AxisBounds`` instance that overrides the
+        auto-computed axis ranges for the current instance's tab.
+        """
+        if not show_mean_line:
+            return self._create_pure_scatter(
+                objective, grouped_series, plot_config,
+                title_suffix=title_suffix, known_optimum=known_optimum,
+                axis_bounds=axis_bounds,
+            )
+
+        traces = []
+        all_values = []
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+            series_list = group_data.get('series_list', [])
+            if not series_list:
+                continue
+
+            max_len = max((len(s) for s in series_list if s), default=0)
+            if max_len == 0:
+                continue
+
+            # Individual repetition traces — faint scatter dots (skip None entries)
+            for rep_series in series_list:
+                if not rep_series:
+                    continue
+                x_rep = [i for i, v in enumerate(rep_series) if v is not None and np.isfinite(v)]
+                y_rep = [v for v in rep_series if v is not None and np.isfinite(v)]
+                if not y_rep:
+                    continue
+                all_values.extend(y_rep)
+                traces.append(go.Scatter(
+                    x=x_rep, y=y_rep,
+                    mode='markers',
+                    marker=dict(size=3, color=color, opacity=0.25),
+                    showlegend=False,
+                    legendgroup=group_name,
+                    hoverinfo='skip',
+                ))
+
+            # Mean line — nanmean across repetitions, ignoring None
+            arr = np.full((len(series_list), max_len), np.nan)
+            for i, s in enumerate(series_list):
+                for j, v in enumerate(s):
+                    if v is not None and np.isfinite(v):
+                        arr[i, j] = float(v)
+            import warnings as _w
+            with _w.catch_warnings():
+                _w.simplefilter("ignore")
+                raw_mean = np.nanmean(arr, axis=0)
+
+            x_mean = [i for i, v in enumerate(raw_mean) if not np.isnan(v)]
+            y_mean = [float(v) for v in raw_mean if not np.isnan(v)]
+            if not y_mean:
+                continue
+            all_values.extend(y_mean)
+            traces.append(go.Scatter(
+                x=x_mean, y=y_mean,
+                mode='lines+markers',
+                name=group_name,
+                legendgroup=group_name,
+                line=dict(color=color, width=2),
+                marker=dict(size=4, color=color),
+                hovertemplate='iter %{x}, %{y:.2f}<extra></extra>',
+            ))
+
+        if not traces:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "create_scatter_plot_from_series: no traces produced for objective=%r "
+                "(groups=%s). All series may be empty or all-None. "
+                "Check extract_llh_series warnings above.",
+                objective, list(grouped_series.keys()),
+            )
+            return None
+
+        layout = dict(
+            title=self._build_plot_title(objective, plot_config, title_suffix),
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
+        )
+        self._apply_axis_config(layout, plot_config)
+        self._apply_axis_bounds(layout, axis_bounds, all_values)
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        return go.Figure(data=traces, layout=layout)
+
+    def _create_pure_scatter(
+        self,
+        objective: str,
+        grouped_series: Dict[str, Dict[str, Any]],
+        plot_config: PlotConfig,
+        title_suffix: str = "",
+        known_optimum: Optional[float] = None,
+        axis_bounds: Optional[Any] = None,
+    ) -> Optional[go.Figure]:
+        """One full-opacity ``+`` marker trace per group, no mean line.
+
+        Each group's points are pooled across every repetition in
+        ``series_list``; ``None`` entries (LLH not selected at that iteration) are
+        skipped. The x value is the iteration index within the repetition, the y
+        value the raw objective — mirroring the old per-iteration LLH scatter.
+        """
+        traces = []
+        all_values = []
+
+        for group_idx, (group_name, group_data) in enumerate(grouped_series.items()):
+            color = Constants.DEFAULT_COLORS[group_idx % len(Constants.DEFAULT_COLORS)]
+            series_list = group_data.get('series_list', [])
+            x_all, y_all = [], []
+            for rep_series in series_list:
+                if not rep_series:
+                    continue
+                for i, v in enumerate(rep_series):
+                    if v is not None and np.isfinite(v):
+                        x_all.append(i)
+                        y_all.append(v)
+            if not y_all:
+                continue
+            all_values.extend(y_all)
+            traces.append(go.Scatter(
+                x=x_all, y=y_all,
+                mode='markers',
+                name=group_name,
+                legendgroup=group_name,
+                marker=dict(size=7, color=color, symbol='cross', opacity=0.8),
+                hovertemplate='iter %{x}, %{y:.2f}<extra></extra>',
+            ))
+
+        if not traces:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "_create_pure_scatter: no traces produced for objective=%r (groups=%s).",
+                objective, list(grouped_series.keys()),
+            )
+            return None
+
+        layout = dict(
+            title=self._build_plot_title(objective, plot_config, title_suffix),
+            xaxis=dict(title=plot_config.metric_label),
+            yaxis=dict(title=plot_config.objective_label),
+            legend=_LEGEND_STYLE,
+        )
+        self._apply_axis_config(layout, plot_config)
+        self._apply_axis_bounds(layout, axis_bounds, all_values)
+        if known_optimum is not None:
+            self._add_optimum_to_layout(layout, known_optimum)
+            traces.append(self._optimum_trace(known_optimum))
+
+        return go.Figure(data=traces, layout=layout)
+
     def create_grouped_box_plot_from_series(
         self,
         objective: str,
@@ -337,7 +545,7 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
@@ -478,7 +686,7 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
@@ -542,12 +750,37 @@ class PlotGenerator:
         return go.Figure(data=traces, layout=layout)
 
     @staticmethod
-    def _extract_baseline_final_values(
+    def _extract_baseline_values(
         baseline_result: Any,
         objective: str,
         objective_instance: Optional[str] = None,
         extractor: Optional[Any] = None,
+        full_run: bool = False,
     ) -> List[float]:
+        def _reduce(trajectory: Optional[List[float]]) -> List[float]:
+            if not trajectory:
+                return []
+            if full_run:
+                return [v for v in trajectory if v is not None and np.isfinite(v)]
+            final_value = trajectory[-1]
+            if final_value is not None and np.isfinite(final_value):
+                return [final_value]
+            return []
+
+        # Full-run distribution: use the same (possibly normalized) trajectory the
+        # other plots use, so the baseline box stays on the same scale as the
+        # normalized experiment series instead of falling back to raw values.
+        if full_run:
+            cache_key = objective_instance or objective
+            return _reduce(extract_baseline_trajectory(
+                baseline_result,
+                cache_key,
+                prefer_cached=True,
+                best_so_far_fallback=True,
+                minimize=True,
+                result_key=objective,
+            ))
+
         raw_experiments = getattr(baseline_result, 'raw_experiments', None)
         if raw_experiments:
             filtered_experiments = raw_experiments
@@ -570,10 +803,7 @@ class PlotGenerator:
                     trajectory = extract_best_so_far_series(
                         exp, objective, minimize=True, only_enabled_improves=False
                     )
-                if trajectory:
-                    final_value = trajectory[-1]
-                    if final_value is not None and np.isfinite(final_value):
-                        values.append(final_value)
+                values.extend(_reduce(trajectory))
             return values
 
         raw_experiment = getattr(baseline_result, 'raw_experiment', None)
@@ -584,11 +814,7 @@ class PlotGenerator:
                 trajectory = extract_best_so_far_series(
                     raw_experiment, objective, minimize=True, only_enabled_improves=False
                 )
-            if trajectory:
-                final_value = trajectory[-1]
-                if final_value is not None and np.isfinite(final_value):
-                    return [final_value]
-            return []
+            return _reduce(trajectory)
 
         cache_key = objective_instance or objective
         trajectory = extract_baseline_trajectory(
@@ -599,11 +825,7 @@ class PlotGenerator:
             minimize=True,
             result_key=objective,
         )
-        if trajectory:
-            final_value = trajectory[-1]
-            if final_value is not None and np.isfinite(final_value):
-                return [final_value]
-        return []
+        return _reduce(trajectory)
 
     def create_box_plot(self, objective: str, experiment_names: List[str], data_series: List[List[float]],
             plot_config: PlotConfig, baselines: Dict[str, Any] = None,
@@ -612,15 +834,23 @@ class PlotGenerator:
         traces = []
         all_values = []
 
+        # Without grouping, each box shows the objective distribution of an
+        # approach over its whole run (where it started -> where it finished),
+        # pooled across repetitions sharing a display name. Using only the final
+        # value would collapse the box to a single flat line.
+        values_by_name: "OrderedDict[str, List[float]]" = OrderedDict()
         for series, name in zip(data_series, experiment_names):
             if not series:
                 continue
-            final_value = series[-1]
-            if final_value is None or not np.isfinite(final_value):
+            finite = [v for v in series if v is not None and np.isfinite(v)]
+            if not finite:
                 continue
-            all_values.append(final_value)
+            values_by_name.setdefault(name, []).extend(finite)
+
+        for name, values in values_by_name.items():
+            all_values.extend(values)
             traces.append(go.Box(
-                y=[final_value],
+                y=values,
                 name=name,
                 boxmean=False,
                 boxpoints=False,
@@ -630,11 +860,14 @@ class PlotGenerator:
 
         if baselines:
             for baseline_key, baseline_result in baselines.items():
-                baseline_values = self._extract_baseline_final_values(
+                # No grouping: show the baseline's full-run distribution too,
+                # matching the experiment boxes above.
+                baseline_values = self._extract_baseline_values(
                     baseline_result,
                     objective,
                     objective_instance=objective_instance,
                     extractor=None,
+                    full_run=True,
                 )
                 if baseline_values:
                     all_values.extend(baseline_values)

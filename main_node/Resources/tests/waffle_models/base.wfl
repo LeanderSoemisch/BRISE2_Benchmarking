@@ -58,6 +58,7 @@ abstract SC {
   Type -> predefined
   Name -> string
 }
+
 // ------------------------Context Model------------------------
 Context {
   TaskConfiguration {
@@ -844,28 +845,9 @@ DefaultConfigurationHandler ? {
   }
 }
 
-// ----------------------Benchmark -----------------------
-// ----------------------Abstract Benchmark Features-----------------------
-
-abstract Axis {
-  Label -> string
-  Scale -> string
-}
-
-abstract ObjectiveAxis: Axis {
-  ObjectiveName -> string
-  Normalize -> boolean
-  Normalization -> string
-  Direction -> string
-}
-
-abstract MetricAxis: Axis {
-  MetricName -> string
-}
-
 // ----------------------Benchmark Features-----------------------
 
-Benchmark {
+Benchmark ? {
   Resources {
     Folder -> string
   }
@@ -921,7 +903,16 @@ Benchmark {
         }
 
         CustomGrouping ? {
-          valueGroups -> array
+          // Each ValueGroupSpec groups experiments whose metadata at `path` matches
+          // one of the declared entries. Add one spec per metadata dimension.
+          ValueGroupSpec * {
+            path -> string
+            // Each entry maps one concrete metadata value to a legend display name.
+            ValueGroupEntry * {
+              value -> string
+              displayName -> string
+            }
+          }
         }
 
         MetricAxis {
@@ -965,7 +956,16 @@ Benchmark {
           pattern -> string
         }
         CustomGrouping ? {
-          valueGroups -> array
+          // Each ValueGroupSpec groups experiments whose metadata at `path` matches
+          // one of the declared entries. Add one spec per metadata dimension.
+          ValueGroupSpec * {
+            path -> string
+            // Each entry maps one concrete metadata value to a legend display name.
+            ValueGroupEntry * {
+              value -> string
+              displayName -> string
+            }
+          }
         }
 
         MetricAxis {
@@ -1007,7 +1007,16 @@ Benchmark {
           pattern -> string
         }
         CustomGrouping ? {
-          valueGroups -> array
+          // Each ValueGroupSpec groups experiments whose metadata at `path` matches
+          // one of the declared entries. Add one spec per metadata dimension.
+          ValueGroupSpec * {
+            path -> string
+            // Each entry maps one concrete metadata value to a legend display name.
+            ValueGroupEntry * {
+              value -> string
+              displayName -> string
+            }
+          }
         }
 
         MetricAxis {
@@ -1032,6 +1041,85 @@ Benchmark {
           label -> string
           scale -> string
           [scale in {"linear", "log10"}]
+        }
+      }
+
+      ScatterPlot {
+        Type -> predefined
+        [Type = 'scatter_plot']
+
+        enableGrouping -> boolean
+        title -> string
+        // "metadata" (default): group by experiment-level metadata attribute
+        // "hyperparameter": group by per-iteration hyperparameter value (e.g. LLH selection in HH experiments)
+        groupBy -> string
+        [groupBy in {"metadata", "hyperparameter"}]
+        // false: pure scatter (one marker trace per group, no aggregated mean
+        // line) — reproduces the old single-rep LLH figures. true (default):
+        // faint per-rep dots + bold mean line.
+        showMeanLine -> boolean
+
+        filterConditions * {
+          path -> string
+          value -> string
+          contains -> boolean
+          pattern -> string
+        }
+        CustomGrouping ? {
+          // Each ValueGroupSpec groups experiments whose metadata at `path` matches
+          // one of the declared entries. Add one spec per metadata dimension.
+          ValueGroupSpec * {
+            path -> string
+            // Each entry maps one concrete metadata value to a legend display name.
+            ValueGroupEntry * {
+              value -> string
+              displayName -> string
+            }
+          }
+        }
+
+        MetricAxis {
+          metricDescription -> string
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+          // Per-instance fixed x-axis limits; only present values override auto-range.
+          // Keyed by the same instance names as Benchmark.Experiment.objectivesToMeasure.
+          KnownAxisBounds ? {
+            InstanceBounds * {
+              instance -> string
+              [instance in Benchmark.Experiment.objectivesToMeasure]
+              xMin -> float
+              xMax -> float
+            }
+          }
+        }
+        ObjectiveAxis {
+          objectivesToPlot -> array
+          normalize -> boolean
+          xor NormalizationStrategy {
+            MinOverAll {
+              Type -> predefined
+              [Type = 'min_over_all_experiments']
+            }
+            MaxOverAll {
+              Type -> predefined
+              [Type = 'max_over_all_experiments']
+            }
+          }
+          label -> string
+          scale -> string
+          [scale in {"linear", "log10"}]
+          // Per-instance fixed y-axis limits; only present values override auto-range.
+          // Keyed by the same instance names as Benchmark.Experiment.objectivesToMeasure.
+          KnownAxisBounds ? {
+            InstanceBounds * {
+              instance -> string
+              [instance in Benchmark.Experiment.objectivesToMeasure]
+              yMin -> float
+              yMax -> float
+            }
+          }
         }
       }
     }

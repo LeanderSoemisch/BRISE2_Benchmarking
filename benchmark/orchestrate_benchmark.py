@@ -89,22 +89,24 @@ def analyze(
             analyzer = BenchmarkAnalyzer(config)
             analyzer.analyze(output_html, output_csv)
 
-        # Ensure default report path is available for init.sh show_report.
-        if output_html != default_html:
-            generated = Path(output_html)
-            fallback = Path(default_html)
-            if generated.exists() and not fallback.exists():
-                fallback.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(generated, fallback)
-                logging.info("Copied report to default location: %s", fallback)
-
-        if output_csv != default_csv:
-            generated_csv = Path(output_csv)
-            fallback_csv = Path(default_csv)
-            if generated_csv.exists() and not fallback_csv.exists():
-                fallback_csv.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(generated_csv, fallback_csv)
-                logging.info("Copied CSV to default location: %s", fallback_csv)
+        # Keep the default report path in sync with the latest analysis so that
+        # init.sh show_report always opens the freshly generated report, not a
+        # stale one from a previous run. Always overwrite, don't skip if present.
+        # Compare resolved paths so we don't copy a file onto itself when the
+        # configured output already points at the default location.
+        for generated_str, fallback_str, label in (
+            (output_html, default_html, "report"),
+            (output_csv, default_csv, "CSV"),
+        ):
+            generated = Path(generated_str)
+            fallback = Path(fallback_str)
+            if not generated.exists():
+                continue
+            if generated.resolve() == fallback.resolve():
+                continue
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(generated, fallback)
+            logging.info("Updated %s at default location: %s", label, fallback)
 
         logging.info(f"Analyzer completed: {output_html}, {output_csv}")
     except FileNotFoundError as fnf_err:
@@ -120,11 +122,11 @@ def orchestrate(skip_analyzer: bool = False, cleanup_before_run: bool = False):
         logging.info("Cleanup completed.")
 
     run_benchmark()
-    if not skip_analyzer:
-        analyze(results_storage)
-    else:
-        logging.info("Skipping analyzer as requested.")
 
+    if skip_analyzer:
+        logging.info("Skipping analyzer as requested.")
+    else:
+        analyze(results_storage)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="BRISE Benchmark orchestrator")

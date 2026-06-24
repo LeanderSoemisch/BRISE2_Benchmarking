@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 class PlotType(Enum):
     CONVERGENCE = 'convergence_plot'
     CUSTOM = 'custom_plot'
+    SCATTER = 'scatter_plot'
 
 
 class MetricType(Enum):
@@ -40,6 +41,18 @@ class Constants:
 
 
 @dataclass
+class AxisBounds:
+    """Fixed axis limits for a single instance's scatter plot tab.
+
+    All fields are optional — only the ones present override the auto-range.
+    """
+    x_min: Optional[float] = None
+    x_max: Optional[float] = None
+    y_min: Optional[float] = None
+    y_max: Optional[float] = None
+
+
+@dataclass
 class PlotConfig:
     """Configuration for a single plot"""
     plot_type: str
@@ -65,6 +78,17 @@ class PlotConfig:
     # contribute at an iteration for it to be drawn. Handles groups of
     # different sizes without needing to hard-code an absolute count.
     min_reps_ratio: Optional[float] = None
+    # ScatterPlot only: 'metadata' (default, groups by experiment-level metadata)
+    # or 'hyperparameter' (groups by per-iteration hyperparameter value, e.g. LLH selection).
+    group_by: str = 'metadata'
+    # ScatterPlot only: when False, draw a pure scatter (one full-opacity marker
+    # trace per group, no aggregated mean line). True keeps the faint-dots +
+    # bold-mean-line style. Set False to reproduce the old single-rep figures.
+    scatter_show_mean_line: bool = True
+    # Per-instance fixed axis limits for this scatter plot, keyed by the same
+    # instance names as KnownOptima. Only axes with an explicit value override
+    # the auto-range; others remain auto-ranged.
+    known_axis_bounds: Dict[str, AxisBounds] = field(default_factory=dict)
 
     def uses_time_metric(self) -> bool:
         return self.metric_type == MetricType.TIME.value
@@ -242,6 +266,13 @@ class BenchmarkConfig:
     known_optima: Dict[str, float] = field(default_factory=dict)
 
     @staticmethod
+    def _float_or_none(v: Any) -> Optional[float]:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _parse_metric_type(metric_description: str) -> str:
         return MetricType.TIME.value if 'time' in metric_description.lower() else MetricType.ITERATION.value
 
@@ -300,6 +331,41 @@ class BenchmarkConfig:
             except (TypeError, ValueError):
                 pass
 
+        raw_group_by = plot_data.get("groupBy", "metadata")
+        group_by = raw_group_by if raw_group_by in ("metadata", "hyperparameter") else "metadata"
+
+        scatter_show_mean_line = bool(plot_data.get("showMeanLine", True))
+
+        # x bounds come from MetricAxis.KnownAxisBounds; y bounds from ObjectiveAxis.KnownAxisBounds.
+        # Both are optional and independent — each is keyed by instance name.
+        x_bounds: Dict[str, tuple] = {}
+        raw_metric_bounds = plot_data.get("MetricAxis", {}).get("KnownAxisBounds", {})
+        if isinstance(raw_metric_bounds, dict):
+            for inst_key, val in raw_metric_bounds.items():
+                if isinstance(val, dict):
+                    x_bounds[inst_key] = (
+                        BenchmarkConfig._float_or_none(val.get("xMin")),
+                        BenchmarkConfig._float_or_none(val.get("xMax")),
+                    )
+
+        y_bounds: Dict[str, tuple] = {}
+        raw_obj_bounds = plot_data.get("ObjectiveAxis", {}).get("KnownAxisBounds", {})
+        if isinstance(raw_obj_bounds, dict):
+            for inst_key, val in raw_obj_bounds.items():
+                if isinstance(val, dict):
+                    y_bounds[inst_key] = (
+                        BenchmarkConfig._float_or_none(val.get("yMin")),
+                        BenchmarkConfig._float_or_none(val.get("yMax")),
+                    )
+
+        known_axis_bounds: Dict[str, AxisBounds] = {}
+        for inst_key in set(x_bounds) | set(y_bounds):
+            x_min, x_max = x_bounds.get(inst_key, (None, None))
+            y_min, y_max = y_bounds.get(inst_key, (None, None))
+            known_axis_bounds[inst_key] = AxisBounds(
+                x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max,
+            )
+
         return PlotConfig(
             plot_type=plot_type,
             metric_description=metric_desc,
@@ -317,6 +383,9 @@ class BenchmarkConfig:
             plot_grouping=plot_grouping,
             min_reps=min_reps,
             min_reps_ratio=min_reps_ratio,
+            group_by=group_by,
+            scatter_show_mean_line=scatter_show_mean_line,
+            known_axis_bounds=known_axis_bounds,
         )
 
     @staticmethod
@@ -356,14 +425,24 @@ class BenchmarkConfig:
                 plots.append(BenchmarkConfig._create_plot_config(PlotType.CUSTOM.value, plot_type_data["CustomPlot"]))
             elif "BoxPlot" in plot_type_data:
                 plots.append(BenchmarkConfig._create_plot_config("box_plot", plot_type_data["BoxPlot"]))
+            elif "ScatterPlot" in plot_type_data:
+                plots.append(BenchmarkConfig._create_plot_config(PlotType.SCATTER.value, plot_type_data["ScatterPlot"]))
 
         # Parse KnownOptima once; forward to RegretAnalysis.optimum_per_objective
         known_optima: Dict[str, float] = {}
         for key, val in benchmark.get("KnownOptima", {}).items():
-            try:
-                known_optima[key] = float(val)
-            except (TypeError, ValueError):
-                pass
+            if isinstance(val, dict):
+                # Waffle format: {"ObjectiveOptimum_N": {"objective": "kroA100.tsp", "optimum": 21282.0}}
+                try:
+                    known_optima[str(val["objective"])] = float(val["optimum"])
+                except (KeyError, TypeError, ValueError):
+                    pass
+            else:
+                # Manual format: {"kroA100.tsp": 21282}
+                try:
+                    known_optima[key] = float(val)
+                except (TypeError, ValueError):
+                    pass
 
         comparative_analysis = BenchmarkConfig._parse_comparative_analysis(
             benchmark.get("ComparativeAnalysis", {}),
@@ -389,23 +468,46 @@ class BenchmarkConfig:
             return None
 
         value_groups: List[ValueGroupSpec] = []
-        for spec in grouping_data.get("valueGroups", []) or []:
-            if not isinstance(spec, dict):
-                continue
-            path = spec.get("path", "")
-            if not path:
-                continue
-            entries: List[ValueGroupEntry] = []
-            for entry in spec.get("groups", []) or []:
-                if not isinstance(entry, dict):
+
+        if "valueGroups" in grouping_data:
+            # Manual array format (hand-written configs):
+            # {"valueGroups": [{"path": "...", "groups": [{"value": "...", "displayName": "..."}]}]}
+            for spec in grouping_data.get("valueGroups", []) or []:
+                if not isinstance(spec, dict):
                     continue
-                value = entry.get("value")
-                display = entry.get("displayName") or entry.get("label")
-                if value is None or not display:
+                path = spec.get("path", "")
+                if not path:
                     continue
-                entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
-            if entries:
-                value_groups.append(ValueGroupSpec(path=path, groups=entries))
+                entries: List[ValueGroupEntry] = []
+                for entry in spec.get("groups", []) or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    value = entry.get("value")
+                    display = entry.get("displayName") or entry.get("label")
+                    if value is None or not display:
+                        continue
+                    entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
+                if entries:
+                    value_groups.append(ValueGroupSpec(path=path, groups=entries))
+        else:
+            # Waffle-generated structured format:
+            # {"ValueGroupSpec_0": {"path": "...", "ValueGroupEntry_0": {"value": "...", "displayName": "..."}}}
+            # Keys are sorted so that the configured display order is preserved.
+            for spec_key in sorted(k for k in grouping_data if isinstance(grouping_data[k], dict) and "path" in grouping_data[k]):
+                spec_val = grouping_data[spec_key]
+                path = spec_val.get("path", "")
+                if not path:
+                    continue
+                entries: List[ValueGroupEntry] = []
+                for entry_key in sorted(k for k in spec_val if k != "path" and isinstance(spec_val[k], dict)):
+                    entry_val = spec_val[entry_key]
+                    value = entry_val.get("value")
+                    display = entry_val.get("displayName") or entry_val.get("label")
+                    if value is None or not display:
+                        continue
+                    entries.append(ValueGroupEntry(value=str(value), display_name=str(display)))
+                if entries:
+                    value_groups.append(ValueGroupSpec(path=path, groups=entries))
 
         if not value_groups:
             return None
@@ -413,9 +515,23 @@ class BenchmarkConfig:
         return CustomGroupingConfig(value_groups=value_groups)
 
     @staticmethod
-    def _parse_match_conditions(conditions: List[Dict[str, Any]]) -> List[MatchCondition]:
+    def _parse_match_conditions(conditions: Any) -> List[MatchCondition]:
+        # Normalise to a flat list regardless of whether the source is the manual
+        # array format or the Waffle-generated dict format.
+        if isinstance(conditions, list):
+            cond_list = conditions
+        elif isinstance(conditions, dict):
+            if "path" in conditions:
+                # Waffle single-instance: the dict IS the one condition
+                cond_list = [conditions]
+            else:
+                # Waffle multi-instance: {"filterConditions_0": {...}, ...}
+                cond_list = [v for _, v in sorted(conditions.items()) if isinstance(v, dict)]
+        else:
+            return []
+
         parsed_conditions: List[MatchCondition] = []
-        for cond in conditions:
+        for cond in cond_list:
             if not isinstance(cond, dict):
                 continue
             parsed_conditions.append(MatchCondition(
