@@ -44,19 +44,25 @@
             <div class="export-section">
                 <h3>Legend Position</h3>
                 <div class="legend-grid">
-                    <div class="legend-pos" onclick="selectLegendPosition('top-left')">Top-Left</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('top-center')">Top-Center</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('top-right')">Top-Right</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('middle-left')">Middle-Left</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('top-left', this)">Top-Left</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('top-center', this)">Top-Center</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('top-right', this)">Top-Right</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('middle-left', this)">Middle-Left</div>
                     <div class="legend-pos" style="background:#f0f0f0;cursor:default;border-style:dashed;">Plot Area</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('middle-right')">Middle-Right</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('bottom-left')">Bottom-Left</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('bottom-center')">Bottom-Center</div>
-                    <div class="legend-pos" onclick="selectLegendPosition('bottom-right')">Bottom-Right</div>
-                    <div class="legend-pos legend-pos-outside" onclick="selectLegendPosition('outside-bottom')">Outside-Bottom</div>
-                    <div class="legend-pos legend-pos-outside" onclick="selectLegendPosition('outside-right')">Outside-Right (Default)</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('middle-right', this)">Middle-Right</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('bottom-left', this)">Bottom-Left</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('bottom-center', this)">Bottom-Center</div>
+                    <div class="legend-pos" onclick="selectLegendPosition('bottom-right', this)">Bottom-Right</div>
+                    <div class="legend-pos legend-pos-outside" onclick="selectLegendPosition('outside-bottom', this)">Outside-Bottom</div>
+                    <div class="legend-pos legend-pos-outside" onclick="selectLegendPosition('outside-right', this)">Outside-Right (Default)</div>
                 </div>
                 <p style="font-size:0.85em;color:#666;margin:8px 0 0;">Leave unselected to use current legend position</p>
+            </div>
+
+            <div class="export-section">
+                <h3>Legend Layout</h3>
+                <button type="button" id="legend-columns-toggle" class="legend-toggle" onclick="toggleLegendColumns(this)">Split into 2 columns</button>
+                <p style="font-size:0.85em;color:#666;margin:8px 0 0;">Lays the legend entries out in two columns at the chosen position</p>
             </div>
 
             <div class="export-actions">
