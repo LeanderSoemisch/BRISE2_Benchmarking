@@ -327,6 +327,29 @@ table.summary-table {
     grid-column: 1/4;
 }
 
+.legend-toggle {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.8em;
+    background: #f9f9f9;
+    transition: all 0.2s;
+}
+
+.legend-toggle:hover {
+    background: #e3f2fd;
+    border-color: #3498db;
+}
+
+.legend-toggle.active {
+    background: #3498db;
+    color: #fff;
+    border-color: #2980b9;
+}
+
 .export-actions {
     display: flex;
     gap: 12px;
