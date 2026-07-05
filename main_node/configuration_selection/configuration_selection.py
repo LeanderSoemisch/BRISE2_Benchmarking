@@ -18,6 +18,10 @@ class ConfigurationSelection:
     Orchestration class for Configuration Selection module.
     """
 
+    # Upper bound on random resamples used to break a duplicate proposal within
+    # a single wave before the point is skipped (see send_new_configurations_to_measure).
+    _MAX_RESAMPLE_ATTEMPTS = 20
+
     def __init__(self, experiment: Experiment):
         self.sub = API()
         self.experiment = experiment
@@ -142,14 +146,24 @@ class ConfigurationSelection:
                     predicted_configs.extend(self._regular_prediction(needed_configs, number_of_predicted_configs))
 
         # De-duplicate the (possibly N) predicted points against already-evaluated
-        # configurations and register them atomically, so a wave's points are
-        # checked-then-added as one critical section. Each point is handled
-        # independently, so a wave may yield fewer than N configs when the space
-        # is nearly exhausted (duplicates trigger a resample, or a stop when the
-        # whole search space is already measured).
+        # configurations AND against the points already chosen in this wave, then
+        # register them atomically, so a wave's points are checked-then-added as
+        # one critical section. With N > 1 a single wave calls the predictor
+        # several times on the same measured data, so a deterministic surrogate
+        # can propose the same point twice within one wave; without the in-wave
+        # check those duplicates would each be dispatched for measurement. Each
+        # point is handled independently, so a wave may yield fewer than N configs
+        # when the space is nearly exhausted (duplicates trigger a resample, or a
+        # stop when the whole search space is already measured).
         with self._selection_lock:
+            def _already_selected(candidate: Configuration) -> bool:
+                # A candidate is a duplicate if it was measured in a previous wave
+                # or has already been chosen earlier in the current wave.
+                return (candidate in self.experiment.evaluated_configurations
+                        or candidate in configs_to_be_evaluated)
+
             for c in predicted_configs:
-                if c not in self.experiment.evaluated_configurations:
+                if not _already_selected(c):
                     temp_msg = f"The model predicted {c}."
                     self.logger.info(temp_msg)
                     configs_to_be_evaluated.append(c)
@@ -162,7 +176,23 @@ class ConfigurationSelection:
                                 body=msg)
 
                 else:
-                    sampled_config = self.predictor.predict(self.experiment.measured_configurations, True)[0]
+                    # Resample a configuration that is distinct from everything
+                    # already evaluated and everything already chosen in this
+                    # wave. Bounded retries so a nearly-exhausted space cannot
+                    # spin forever; if no distinct point is found the point is
+                    # skipped and the wave simply returns fewer than N configs.
+                    sampled_config = None
+                    for _ in range(self._MAX_RESAMPLE_ATTEMPTS):
+                        candidate = self.predictor.predict(self.experiment.measured_configurations, True)[0]
+                        if not _already_selected(candidate):
+                            sampled_config = candidate
+                            break
+                    if sampled_config is None:
+                        temp_msg = (f"Predicted configuration {c} has already been evaluated and no distinct "
+                                    f"configuration could be sampled in {self._MAX_RESAMPLE_ATTEMPTS} attempts; "
+                                    f"skipping this point for the current wave.")
+                        self.logger.info(temp_msg)
+                        continue
                     temp_msg = f"Predicted configuration {c} has already been evaluated. Randomly sampled {sampled_config}."
                     self.logger.info(temp_msg)
                     configs_to_be_evaluated.append(sampled_config)
@@ -174,13 +204,14 @@ class ConfigurationSelection:
                     self.experiment.update_model_state(True)
                 else:
                     self.experiment.update_model_state(False)
-                self.logger.info(temp_msg)
+                dispatch_msg = f"Sending configuration {c} to be measured."
+                self.logger.info(dispatch_msg)
                 c_to_send = deepcopy(c)
                 if self.experiment.search_space.is_flat:
                     c_to_send.parameters = self.experiment.search_space.transform_flat_parameters_to_hierarchic(
                         c.parameters)
                 hierarchical_configs.append(c_to_send)
-                self.sub.send('log', 'info', message=temp_msg)
+                self.sub.send('log', 'info', message=dispatch_msg)
                 if os.environ.get('TEST_MODE') != 'UNIT_TEST':
                     publish(exchange='measure_new_configuration_exchange',
                             routing_key=self.experiment.unique_id,
