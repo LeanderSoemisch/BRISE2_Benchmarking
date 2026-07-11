@@ -73,14 +73,11 @@ class ConfigurationSelection:
         """
         needed_configs = json.loads(body.decode()).get("worker_capacity", 1)
 
-        number_of_predicted_configs = (
-            min([model.candidate_selector.number_of_points for model in self.predictor.mapping_region_model.values()]))
-
         predicted_configs = []
         configs_to_be_evaluated = []
 
         if not self.transfer_is_enabled:
-            predicted_configs.extend(self._regular_prediction(needed_configs, number_of_predicted_configs))
+            predicted_configs.extend(self._regular_prediction(needed_configs))
         else:
             similar_experiments = self.transfer_learning_orchestrator.ted_module.analyse_experiments_similarity()
             if similar_experiments is None:
@@ -91,7 +88,7 @@ class ConfigurationSelection:
             elif len(similar_experiments) == 0:
                 temp_msg = "No similar experiment has been found."
                 self.logger.info(temp_msg)
-                predicted_configs.extend(self._regular_prediction(needed_configs, number_of_predicted_configs))
+                predicted_configs.extend(self._regular_prediction(needed_configs))
             else:
                 # Model transfer
                 model_transfer_module = self.transfer_learning_orchestrator.transfer_submodules["Model_transfer"]
@@ -131,19 +128,16 @@ class ConfigurationSelection:
                         self.logger.info("Measuring a configuration using the transferred model")
                     # regular transfer of configurations
                     else:
+                        extended_configuration_list = self.experiment.measured_configurations + transferred_configurations
                         while needed_configs > 0:
-                            if needed_configs - number_of_predicted_configs >= 0:
-                                extended_configuration_list = self.experiment.measured_configurations + transferred_configurations
-                                temp_predicted = self.predictor.predict(extended_configuration_list)
-                                predicted_configs.extend(temp_predicted)
-                            else:
-                                extended_configuration_list = self.experiment.measured_configurations + transferred_configurations
-                                temp_predicted = self.predictor.predict(extended_configuration_list)
-                                predicted_configs.extend(temp_predicted[:needed_configs])
-                            needed_configs -= number_of_predicted_configs
+                            temp_predicted = self.predictor.predict(extended_configuration_list)
+                            if not temp_predicted:
+                                break
+                            predicted_configs.extend(temp_predicted[:needed_configs])
+                            needed_configs -= len(temp_predicted)
                 # regular transfer of models
                 if model_transfer_module is not None:
-                    predicted_configs.extend(self._regular_prediction(needed_configs, number_of_predicted_configs))
+                    predicted_configs.extend(self._regular_prediction(needed_configs))
 
         # De-duplicate the (possibly N) predicted points against already-evaluated
         # configurations AND against the points already chosen in this wave, then
@@ -168,13 +162,15 @@ class ConfigurationSelection:
                     self.logger.info(temp_msg)
                     configs_to_be_evaluated.append(c)
                 elif len(self.experiment.measured_configurations) == self.experiment.search_space.size:
+                    # The wave is abandoned: the remaining points could only be
+                    # duplicates too, and a stop must be requested exactly once.
                     msg = "Entire Search Space has been already evaluated. Shutting down."
                     self.logger.info(msg)
                     if os.environ.get('TEST_MODE') != 'UNIT_TEST':
                         publish(exchange='stop_experiment_exchange',
                                 routing_key=self.experiment.unique_id,
                                 body=msg)
-
+                    break
                 else:
                     # Resample a configuration that is distinct from everything
                     # already evaluated and everything already chosen in this
@@ -219,17 +215,19 @@ class ConfigurationSelection:
 
         return configs_to_be_evaluated, hierarchical_configs
 
-    def _regular_prediction(self, needed_configs: int, number_of_predicted_configs: int):
+    def _regular_prediction(self, needed_configs: int) -> List[Configuration]:
+        """
+        Propose configurations until the wave is filled. A proposal usually yields
+        NumberOfPoints configurations, but the count is taken from the proposal
+        itself, as a level that has to sample cannot always serve that many.
+        """
         result = []
-        while needed_configs > 0:
-            if needed_configs - number_of_predicted_configs >= 0:
-                temp_predicted = self.predictor.predict(self.experiment.measured_configurations)
-                result.extend(temp_predicted)
-            else:
-                temp_predicted = self.predictor.predict(self.experiment.measured_configurations)
-                result.extend(temp_predicted[:needed_configs])
-            needed_configs -= number_of_predicted_configs
-        return result
+        while len(result) < needed_configs:
+            temp_predicted = self.predictor.predict(self.experiment.measured_configurations)
+            if not temp_predicted:
+                break
+            result.extend(temp_predicted)
+        return result[:needed_configs]
 
     class _EventServiceConnection(RabbitMQConnection):
         """

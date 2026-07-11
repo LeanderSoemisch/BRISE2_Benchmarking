@@ -2,9 +2,8 @@
 Unit tests for the multi-point-proposal arithmetic in ConfigurationSelection.
 
 These cover `_regular_prediction`, which turns a `worker_capacity` request
-(`needed_configs`) into configurations using a surrogate build that yields
-`number_of_predicted_configs` (= NumberOfPoints, N) points each time. The
-behavior to lock in:
+(`needed_configs`) into configurations by asking the predictor for proposals of
+NumberOfPoints (N) points each. The behavior to lock in:
 
   * async / N=1 default               -> 1 config from 1 build (unchanged)
   * batched, BatchSize == N           -> N configs from a SINGLE build
@@ -50,7 +49,7 @@ def _make_selection(points_per_build: int):
 def test_async_default_single_point():
     """worker_capacity=1, N=1 -> 1 config from exactly one build (today's path)."""
     selection, predictor = _make_selection(points_per_build=1)
-    result = selection._regular_prediction(needed_configs=1, number_of_predicted_configs=1)
+    result = selection._regular_prediction(needed_configs=1)
     assert len(result) == 1
     assert predictor.predict.call_count == 1
 
@@ -58,7 +57,7 @@ def test_async_default_single_point():
 def test_multi_point_single_build():
     """worker_capacity=N, N=N -> N configs from ONE surrogate build."""
     selection, predictor = _make_selection(points_per_build=5)
-    result = selection._regular_prediction(needed_configs=5, number_of_predicted_configs=5)
+    result = selection._regular_prediction(needed_configs=5)
     assert len(result) == 5
     # The whole wave comes from a single build (true multi-point proposal).
     assert predictor.predict.call_count == 1
@@ -69,7 +68,7 @@ def test_multi_point_single_build():
 def test_batch_is_multiple_of_points():
     """BatchSize=6, N=2 -> 6 configs from 3 builds."""
     selection, predictor = _make_selection(points_per_build=2)
-    result = selection._regular_prediction(needed_configs=6, number_of_predicted_configs=2)
+    result = selection._regular_prediction(needed_configs=6)
     assert len(result) == 6
     assert predictor.predict.call_count == 3
 
@@ -77,7 +76,7 @@ def test_batch_is_multiple_of_points():
 def test_batch_not_multiple_of_points_slices_tail():
     """BatchSize=5, N=2 -> exactly 5 configs (last build contributes a sliced tail)."""
     selection, predictor = _make_selection(points_per_build=2)
-    result = selection._regular_prediction(needed_configs=5, number_of_predicted_configs=2)
+    result = selection._regular_prediction(needed_configs=5)
     assert len(result) == 5
     # ceil(5/2) = 3 builds; the third build is sliced to a single point.
     assert predictor.predict.call_count == 3

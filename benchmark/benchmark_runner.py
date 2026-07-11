@@ -10,13 +10,39 @@ import shutil
 import uuid
 from copy import deepcopy
 from functools import wraps
-from threading import Thread
+from threading import Lock, Thread
 from typing import Union
 
 import numpy as np
 import pika
 from core_entities.search_space import SearchSpace
 from tools.initial_config import load_experiment_setup
+
+TIME_BASED_STOP_CONDITION = {
+    "StopCondition": {
+        "Instance": {
+            "TimeBasedSC": {
+                "Parameters": {
+                    "MaxRunTime": 1,
+                    "TimeUnit": "minutes"
+                },
+                "Type": "time_based",
+                "Name": "t"
+            }
+        },
+        "StopConditionTriggerLogic": {
+            "Expression": "t",
+            "InspectionParameters": {
+                "RepetitionPeriod": 1,
+                "TimeUnit": "seconds"
+            }
+        }
+    }
+}
+
+# Hierarchical (tree-shaped) search spaces from the test suite. Their Predictor
+# holds one Model per level, so they exercise the multi-point tree walk
+HIERARCHICAL_TEST_CASES = ["test_case_2", "test_case_8"]
 
 
 class BRISEBenchmarkRunner:
@@ -66,13 +92,13 @@ class BRISEBenchmarkRunner:
             self.is_calculating_number_of_experiments = True
             logging_level = self.logger.level
             self.logger.setLevel(logging.WARNING)
-            benchmarking_function(self, *args, *kwargs)
+            benchmarking_function(self, *args, **kwargs)
             self.logger.setLevel(logging_level)
             logging.info(
                 "Benchmark is going to run %s unique Experiments (please, take into account the repetitions as well)."
                 % len(self.experiments_to_be_performed))
             self.is_calculating_number_of_experiments = False
-            benchmarking_function(self, *args, *kwargs)
+            benchmarking_function(self, *args, **kwargs)
         return wrapper
 
     def execute_experiment(self,
@@ -491,30 +517,74 @@ class BRISEBenchmarkRunner:
 
         return self.counter
 
-    @_benchmarkable
-    def fill_db(self):
-        self._experiment_timeout = 5 * 60
-        time_based_sc_skeleton = {
-            "StopCondition": {
-                "Instance": {
-                    "TimeBasedSC": {
-                        "Parameters": {
-                            "MaxRunTime": 1,
-                            "TimeUnit": "minutes"
-                        },
-                        "Type": "time_based",
-                        "Name": "t"
-                    }
+    @staticmethod
+    def _set_number_of_points(experiment_description: dict, number_of_points: int):
+        """
+        Set NumberOfPoints on the CandidateSelector of every level.
+
+        A hierarchical Predictor holds one Model per level, and all of them must
+        propose the same number of points.
+        """
+        predictor = experiment_description["ConfigurationSelection"]["Predictor"]
+        for model_name, model in predictor.items():
+            if model_name.startswith("Model"):
+                for candidate_selector in model["CandidateSelector"].values():
+                    candidate_selector["NumberOfPoints"] = number_of_points
+
+    @staticmethod
+    def _multi_point_distribution_skeleton(number_of_points: int) -> dict:
+        """
+        A wave has to be exactly as large as a proposal, so that a single surrogate
+        build per level feeds one wave of Workers (batchSize == NumberOfPoints).
+        """
+        return {
+            "DistributionMode": {
+                "HybridDistribution": {
+                    "Type": "HybridDistribution"
                 },
-                "StopConditionTriggerLogic": {
-                    "Expression": "t",
-                    "InspectionParameters": {
-                        "RepetitionPeriod": 1,
-                        "TimeUnit": "seconds"
-                    }
+                "batchSize": {
+                    "Int": str(number_of_points)
+                },
+                "TimeoutInSeconds": {
+                    "Int": "350"
                 }
             }
         }
+
+    @_benchmarkable
+    def benchmark_hierarchical_multi_point(self, number_of_points: int = 2):
+        """
+        Benchmarks multi-point proposal on HIERARCHICAL search spaces.
+
+        `benchmark_distribution_modes` only covers the flat Energy search space, where
+        one region holds every parameter. Here the Predictor walks a tree instead, and
+        each level proposes `number_of_points` points out of a single surrogate build.
+
+        Each hierarchical test case is run with its own models and selectors, only the
+        number of proposed points, the distribution mode and the stop condition are
+        replaced.
+        """
+        self._experiment_timeout = 5 * 60
+
+        for test_case in HIERARCHICAL_TEST_CASES:
+            self.logger.info(f"Executing benchmark: {test_case} with NumberOfPoints {number_of_points}")
+
+            self._base_experiment_description, self._base_search_space = load_experiment_setup(
+                f"./Resources/tests/test_cases_product_configurations/{test_case}.json")
+
+            experiment_description = self.base_experiment_description
+            experiment_description.update(deepcopy(TIME_BASED_STOP_CONDITION))
+            experiment_description.update(self._multi_point_distribution_skeleton(number_of_points))
+            self._set_number_of_points(experiment_description, number_of_points)
+
+            self.execute_experiment(experiment_description, number_of_repetitions=1)
+
+        return self.counter
+
+    @_benchmarkable
+    def fill_db(self):
+        self._experiment_timeout = 5 * 60
+        time_based_sc_skeleton = TIME_BASED_STOP_CONDITION
         flat_2float_model_skeleton = {
             "ConfigurationSelection": {
                 "SamplingStrategy": {
@@ -757,10 +827,14 @@ class MainAPIClient:
             queue="main_responses",
             on_message_callback=self.on_response,
             auto_ack=True)
-        self.customer_thread = self.ConsumerThread('event-service', 49153, self)
-        self.customer_thread.start()
         self.response = None
         self.corr_id = None
+        # `final_event` issues RPCs from the ConsumerThread, while the main thread
+        # issues its own. A pika connection must not be used by two threads at once.
+        self._rpc_lock = Lock()
+
+        self.customer_thread = self.ConsumerThread('event-service', 49153, self)
+        self.customer_thread.start()
 
     def on_response(self, ch: pika.spec.Channel, method: pika.spec.methods, properties: pika.spec.BasicProperties,
                     body: bytes):
@@ -784,22 +858,23 @@ class MainAPIClient:
             - download_dump: to download dump file
         :param param: body for a specific action. See details in specific action in main_node/api-supreme.py
         """
-        self.response = None
-        self.corr_id = str(uuid.uuid4())
+        with self._rpc_lock:
+            self.response = None
+            self.corr_id = str(uuid.uuid4())
 
-        self.channel.basic_publish(
-            exchange='',
-            routing_key=f'main_{action}_queue',
-            properties=pika.BasicProperties(
-                reply_to="main_responses",
-                correlation_id=self.corr_id,
-                headers={'body_type': 'pickle'}
-            ),
-            body=param)
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=f'main_{action}_queue',
+                properties=pika.BasicProperties(
+                    reply_to="main_responses",
+                    correlation_id=self.corr_id,
+                    headers={'body_type': 'pickle'}
+                ),
+                body=param)
 
-        while self.response is None:
-            self.connection.process_data_events()
-        return self.response
+            while self.response is None:
+                self.connection.process_data_events()
+            return self.response
 
     def update_status(self):
         status_report = self.call("status")

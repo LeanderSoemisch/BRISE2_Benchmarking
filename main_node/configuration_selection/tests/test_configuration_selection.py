@@ -1,15 +1,13 @@
-import pytest
-from typing import Union
-from configuration_selection.configuration_selection import ConfigurationSelection
-from configuration_selection.model.surrogate.model_mock import ModelMock
-from configuration_selection.model.surrogate.tree_parzen_estimator import TreeParzenEstimator
-from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.linear_model import LinearRegression
-from default_config_handler.default_configuration_handler_orchestrator import DefaultConfigHandlerOrchestrator
-from core_entities.experiment import Experiment
+
+from configuration_selection.configuration_selection import ConfigurationSelection
+from configuration_selection.model.surrogate.tree_parzen_estimator import TreeParzenEstimator
 from core_entities.configuration import Configuration
+from core_entities.experiment import Experiment
 from core_entities.search_space import get_search_space_record
+from default_config_handler.default_configuration_handler_orchestrator import DefaultConfigHandlerOrchestrator
 from tools.restore_db import RestoreDB
 
 rdb = RestoreDB()
