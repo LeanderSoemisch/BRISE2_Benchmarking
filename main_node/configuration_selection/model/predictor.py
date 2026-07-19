@@ -7,12 +7,11 @@ from typing import Dict, List, Mapping, Tuple
 import pandas as pd
 
 from configuration_selection.sampling.sampling_strategy_orchestrator import SamplingStrategyOrchestrator
-from core_entities.configuration import Configuration
+from core_entities.configuration import Configuration, PartialConfiguration
 from core_entities.search_space import Hyperparameter
 from core_entities.search_space import SearchSpace
 from tools.mongo_dao import MongoDB
 from configuration_selection.model.model import Model
-from configuration_selection.model.partial_configuration import PartialConfiguration
 
 
 class Predictor:
@@ -122,8 +121,8 @@ class Predictor:
                     point.pending_regions |= self.search_space.activate_regions(candidate.to_frame().T)
 
         self.search_space.reset_level()
-        for point in points:
-            self.logger.info(f"CONFIGURATION STATUS: {point.type}")
+        self.logger.info(f"Proposal walked the search space for {number_of_points} point(s) "
+                         f"(NumberOfPoints={self.number_of_points}, sample={sample}).")
 
         if len(model_dump) == self.search_space.number_of_levels:
             self.hierarchical_models_dumps.append(model_dump)

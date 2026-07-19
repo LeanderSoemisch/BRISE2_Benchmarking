@@ -40,9 +40,11 @@ TIME_BASED_STOP_CONDITION = {
     }
 }
 
-# Hierarchical (tree-shaped) search spaces from the test suite. Their Predictor
-# holds one Model per level, so they exercise the multi-point tree walk
-HIERARCHICAL_TEST_CASES = ["test_case_2", "test_case_8"]
+# Hierarchical (tree-shaped) search spaces from the test suite that are valid
+# multi-point products: their Predictor holds one Model per level, so they
+# exercise the multi-point tree walk, and they declare NumberOfPoints together
+# with a matching DistributionMode batchSize.
+HIERARCHICAL_MULTI_POINT_TEST_CASES = ["test_case_16"]
 
 
 class BRISEBenchmarkRunner:
@@ -520,10 +522,13 @@ class BRISEBenchmarkRunner:
     @staticmethod
     def _set_number_of_points(experiment_description: dict, number_of_points: int):
         """
-        Set NumberOfPoints on the CandidateSelector of every level.
+        Re-scale an already multi-point description to `number_of_points`.
 
-        A hierarchical Predictor holds one Model per level, and all of them must
-        propose the same number of points.
+        Two things have to stay in sync (base.wfl:616-620). A hierarchical
+        Predictor holds one Model per level and all of them must propose the same
+        number of points, and a wave has to be exactly as large as a proposal
+        (batchSize == NumberOfPoints), so that a single surrogate build per level
+        feeds one wave of Workers.
         """
         predictor = experiment_description["ConfigurationSelection"]["Predictor"]
         for model_name, model in predictor.items():
@@ -531,52 +536,35 @@ class BRISEBenchmarkRunner:
                 for candidate_selector in model["CandidateSelector"].values():
                     candidate_selector["NumberOfPoints"] = number_of_points
 
-    @staticmethod
-    def _multi_point_distribution_skeleton(number_of_points: int) -> dict:
-        """
-        A wave has to be exactly as large as a proposal, so that a single surrogate
-        build per level feeds one wave of Workers (batchSize == NumberOfPoints).
-        """
-        return {
-            "DistributionMode": {
-                "HybridDistribution": {
-                    "Type": "HybridDistribution"
-                },
-                "batchSize": {
-                    "Int": str(number_of_points)
-                },
-                "TimeoutInSeconds": {
-                    "Int": "350"
-                }
-            }
-        }
+        experiment_description["DistributionMode"]["batchSize"]["Int"] = str(number_of_points)
 
     @_benchmarkable
-    def benchmark_hierarchical_multi_point(self, number_of_points: int = 2):
+    def benchmark_hierarchical_multi_point(self, number_of_points: int = None):
         """
         Benchmarks multi-point proposal on HIERARCHICAL search spaces.
 
         `benchmark_distribution_modes` only covers the flat Energy search space, where
         one region holds every parameter. Here the Predictor walks a tree instead, and
-        each level proposes `number_of_points` points out of a single surrogate build.
+        each level proposes several points out of a single surrogate build.
 
-        Each hierarchical test case is run with its own models and selectors, only the
-        number of proposed points, the distribution mode and the stop condition are
-        replaced.
+        The test cases are already valid multi-point products - they declare both
+        NumberOfPoints and a matching DistributionMode - so a run only replaces the
+        stop condition. Pass `number_of_points` to sweep other batch sizes; it
+        re-scales NumberOfPoints and batchSize together.
         """
         self._experiment_timeout = 5 * 60
 
-        for test_case in HIERARCHICAL_TEST_CASES:
-            self.logger.info(f"Executing benchmark: {test_case} with NumberOfPoints {number_of_points}")
-
+        for test_case in HIERARCHICAL_MULTI_POINT_TEST_CASES:
             self._base_experiment_description, self._base_search_space = load_experiment_setup(
                 f"./Resources/tests/test_cases_product_configurations/{test_case}.json")
 
             experiment_description = self.base_experiment_description
             experiment_description.update(deepcopy(TIME_BASED_STOP_CONDITION))
-            experiment_description.update(self._multi_point_distribution_skeleton(number_of_points))
-            self._set_number_of_points(experiment_description, number_of_points)
+            if number_of_points is not None:
+                self._set_number_of_points(experiment_description, number_of_points)
 
+            self.logger.info(f"Executing benchmark: {test_case} with batchSize "
+                             f"{experiment_description['DistributionMode']['batchSize']['Int']}")
             self.execute_experiment(experiment_description, number_of_repetitions=1)
 
         return self.counter
