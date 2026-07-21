@@ -1,6 +1,3 @@
-from configuration_selection.configuration_selection import ConfigurationSelection
-from configuration_selection.model.surrogate.tree_parzen_estimator import TreeParzenEstimator
-from sklearn.gaussian_process import GaussianProcessRegressor
 import json
 
 from sklearn.ensemble import GradientBoostingRegressor
