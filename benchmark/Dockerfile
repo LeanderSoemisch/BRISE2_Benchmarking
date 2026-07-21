@@ -1,4 +1,4 @@
-FROM brisedev/benchmark-dev:2.6.0
+FROM brisedev/benchmark-dev:2.6.1
 
 # Inner project dependencies
 COPY ./main_node/core_entities /home/benchmark_user/core_entities/
@@ -22,7 +22,7 @@ RUN usermod -aG sudo benchmark_user
 
 # Copying information for specific benchmarks, for example
 
-COPY ./worker/scenarios/energy_consumption/search_space_96/*.csv /home/benchmark_user/scenarios/energy_consumption/search_space_96/
+#COPY ./worker/scenarios/energy_consumption/search_space_96/*.csv /home/benchmark_user/scenarios/energy_consumption/search_space_96/
 #RUN rm /home/benchmark_user/scenarios/energy_consumption/search_space_96/*avg.csv
 
 # -     add your information here   -
@@ -32,10 +32,9 @@ WORKDIR /home/benchmark_user
 RUN chown --recursive benchmark_user:benchmark_user .
 USER benchmark_user
 
-RUN echo "conda activate brise-260" >> ~/.bashrc
-
+RUN echo "conda activate brise-261" >> ~/.bashrc
 # The container only runs the benchmark (filling experiment dumps) and then
 # exits. The analysis pipeline runs on the host afterwards (see init.sh `up`),
 # where the interactive baseline-selection UI can actually open a browser -
 # webbrowser.open() is a no-op inside this headless container.
-CMD conda run --no-capture-output -n brise-260 python3 -u ./orchestrate_benchmark.py --mode benchmark --skip-analyzer
+CMD conda run --no-capture-output -n brise-261 python3 -u ./orchestrate_benchmark.py --mode benchmark --skip-analyzer
